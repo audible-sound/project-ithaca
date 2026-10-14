@@ -1,39 +1,18 @@
-import { useEffect, useState } from "react";
-import type { HealthResponse } from "@ithaca/shared";
-
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+import { useEffect } from "react";
+import { useHealthStore } from "./stores/healthStore";
 
 export function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const health = useHealthStore((state) => state.health);
+  const error = useHealthStore((state) => state.error);
+  const loadHealth = useHealthStore((state) => state.loadHealth);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadHealth() {
-      try {
-        const res = await fetch(`${apiUrl}/health`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as HealthResponse;
-        if (!cancelled) {
-          setHealth(data);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to reach API");
-          setHealth(null);
-        }
-      }
-    }
-
-    void loadHealth();
+    const controller = new AbortController();
+    void loadHealth(controller.signal);
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, []);
+  }, [loadHealth]);
 
   return (
     <main className="page">

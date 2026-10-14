@@ -7,10 +7,10 @@ Multi-agent B2B lead management system.
 | Area | Choice |
 | --- | --- |
 | Monorepo | pnpm workspaces + Turborepo |
-| Frontend | React, TypeScript, Vite (`apps/web`) |
+| Frontend | React, TypeScript, Vite, Zustand (`apps/web`) |
 | Backend | Node.js, Express, TypeScript (`apps/api`) |
 | Orchestrator | Co-located package (`packages/orchestrator`) imported by the API |
-| Database | PostgreSQL 16 (Docker Compose, host port `5433`) |
+| Database | PostgreSQL 16 with Drizzle (`packages/db`, Docker Compose, host port `5433`) |
 | Agents / model / Exa / email | Stub packages under `packages/` |
 
 
@@ -52,6 +52,8 @@ pnpm dev
 | `pnpm typecheck` | Typecheck the workspace |
 | `pnpm lint` | Lint the workspace |
 | `pnpm clean` | Remove build outputs |
+| `pnpm db:generate` | Write SQL migrations from the Drizzle schema |
+| `pnpm db:migrate` | Apply committed migrations to Postgres |
 
 ## Package map
 
@@ -59,7 +61,7 @@ pnpm dev
 apps/web            React UI
 apps/api            Express API (health, workflow smoke route)
 packages/shared     Shared types / DTOs
-packages/db         Postgres pool + ping()
+packages/db         Drizzle client on the Postgres pool, plus ping()
 packages/orchestrator  Sequential lead workflow shell
 packages/agents     identify / qualify / summarize / draft stubs
 packages/ai-model   Model-layer stub (Gemini later)
