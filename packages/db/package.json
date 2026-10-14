@@ -1,0 +1,30 @@
+{
+  "name": "@ithaca/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@ithaca/eslint-config": "workspace:*",
+    "@ithaca/tsconfig": "workspace:*",
+    "@types/node": "^22.15.21",
+    "@types/pg": "^8.15.2",
+    "eslint": "^9.28.0",
+    "typescript": "^5.8.3"
+  }
+}

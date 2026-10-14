@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ithaca-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ithaca
+      POSTGRES_PASSWORD: ithaca
+      POSTGRES_DB: ithaca
+    volumes:
+      - ithaca_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ithaca -d ithaca"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ithaca_pg_data:
