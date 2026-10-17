@@ -32,7 +32,6 @@ pnpm dev
 
 - Web: http://localhost:5173
 - API: http://localhost:3001
-- Health: http://localhost:3001/health
 
 ## Workflow
 
@@ -54,14 +53,16 @@ pnpm dev
 | `pnpm clean` | Remove build outputs |
 | `pnpm db:generate` | Write SQL migrations from the Drizzle schema |
 | `pnpm db:migrate` | Apply committed migrations to Postgres |
+| `pnpm db:seed` | Run numbered database seeders in order |
 
 ## Package map
 
 ```
 apps/web            React UI
-apps/api            Express API (health, workflow smoke route)
+apps/api            Express API (auth, workflow smoke route)
 packages/shared     Shared types / DTOs
-packages/db         Drizzle client on the Postgres pool, plus ping()
+packages/db         Drizzle client on the Postgres pool
+packages/security   Password hashing and token signing
 packages/orchestrator  Sequential lead workflow shell
 packages/agents     identify / qualify / summarize / draft stubs
 packages/ai-model   Model-layer stub (Gemini later)

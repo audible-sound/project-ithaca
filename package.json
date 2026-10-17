@@ -13,7 +13,8 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
     "db:generate": "pnpm --filter @ithaca/db db:generate",
-    "db:migrate": "pnpm --filter @ithaca/db db:migrate"
+    "db:migrate": "pnpm --filter @ithaca/db db:migrate",
+    "db:seed": "pnpm --filter @ithaca/db db:seed"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

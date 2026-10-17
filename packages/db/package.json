@@ -16,9 +16,11 @@
     "lint": "eslint .",
     "clean": "rm -rf dist",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/seeders/index.ts"
   },
   "dependencies": {
+    "@ithaca/security": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.16.0"
   },
@@ -30,6 +32,7 @@
     "dotenv": "^18.0.8",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9.28.0",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }
 }
