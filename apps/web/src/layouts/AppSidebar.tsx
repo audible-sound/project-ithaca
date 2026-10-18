@@ -28,7 +28,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: DashboardOutlined },
   { label: "Leads", icon: PeopleOutlined },
-  { label: "Ideal customer profile", icon: PersonSearchOutlined },
+  { label: "Ideal customer profile", to: "/icp", icon: PersonSearchOutlined },
   { label: "Workflow runs", icon: AccountTreeOutlined },
 ];
 
@@ -101,7 +101,11 @@ export function AppSidebar(): ReactElement {
       >
         {navItems.map((item) => {
           const Icon = item.icon;
-          const selected = item.to !== undefined && pathname === item.to;
+          const selected =
+            item.to === "/"
+              ? pathname === "/"
+              : item.to !== undefined &&
+                (pathname === item.to || pathname.startsWith(`${item.to}/`));
           const label = (
             <>
               <ListItemIcon sx={{ minWidth: 32, color: "inherit" }}>

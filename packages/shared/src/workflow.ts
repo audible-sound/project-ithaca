@@ -1,3 +1,5 @@
+import type { IdealCustomerProfileInput } from "./profiles.js";
+
 export type WorkflowStage =
   | "identify"
   | "qualify"
@@ -11,16 +13,7 @@ export type WorkflowRunStatus =
   | "completed"
   | "failed";
 
-export interface IdealCustomerProfileInput {
-  name: string;
-  industries?: string[];
-  locations?: string[];
-  companySizeMin?: number;
-  companySizeMax?: number;
-  businessNeedKeywords?: string[];
-  outreachTone?: string;
-  messageConstraints?: string;
-}
+export type { IdealCustomerProfileInput };
 
 export interface LeadWorkflowInput {
   icp: IdealCustomerProfileInput;
