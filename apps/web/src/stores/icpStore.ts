@@ -5,7 +5,7 @@ import type {
   ListIdealCustomerProfilesResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
-import { useAuthStore } from "../../stores/authStore";
+import { useAuthStore } from "./authStore";
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
@@ -41,11 +41,41 @@ type IcpStore = {
   loadProfiles: () => Promise<void>;
 };
 
+const maxCompanySize = 2_147_483_647;
+const currencyCode = /^[A-Za-z]{3}$/;
+
 function splitList(value: string): string[] {
   return value
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+function industriesOverlap(include: string[], exclude: string[]): boolean {
+  const excluded = new Set(exclude.map((item) => item.toLowerCase()));
+  return include.some((item) => excluded.has(item.toLowerCase()));
+}
+
+function budgetCurrencyMessage(
+  currency: string,
+  budgetMin: number | undefined,
+  budgetMax: number | undefined,
+  budgetNotes: string,
+): string | null {
+  const budgetSpecified =
+    budgetMin !== undefined ||
+    budgetMax !== undefined ||
+    budgetNotes.length > 0;
+
+  if (!budgetSpecified && currency.length === 0) {
+    return null;
+  }
+
+  if (!currencyCode.test(currency)) {
+    return "Budget currency must be a three-letter code.";
+  }
+
+  return null;
 }
 
 function readWholeNumber(value: string): number | undefined | "invalid" {
@@ -121,12 +151,29 @@ export const useIcpStore = create<IcpStore>()((set) => ({
     }
   },
   createProfile: async (values) => {
+    const name = values.name.trim();
+    if (!name) {
+      set({ status: "error", message: "Name is required." });
+      return;
+    }
+
     const companySizeMin = readWholeNumber(values.companySizeMin);
     const companySizeMax = readWholeNumber(values.companySizeMax);
     if (companySizeMin === "invalid" || companySizeMax === "invalid") {
       set({
         status: "error",
         message: "Company size must be a whole number.",
+      });
+      return;
+    }
+
+    if (
+      (companySizeMin !== undefined && companySizeMin > maxCompanySize) ||
+      (companySizeMax !== undefined && companySizeMax > maxCompanySize)
+    ) {
+      set({
+        status: "error",
+        message: "Company size cannot exceed 2,147,483,647.",
       });
       return;
     }
@@ -162,6 +209,40 @@ export const useIcpStore = create<IcpStore>()((set) => ({
       return;
     }
 
+    const industries = splitList(values.industriesInclude);
+    const industriesExclude = splitList(values.industriesExclude);
+    if (industriesOverlap(industries, industriesExclude)) {
+      set({
+        status: "error",
+        message: "An industry cannot be both included and excluded.",
+      });
+      return;
+    }
+
+    const country = values.country.trim();
+    const region = values.region.trim();
+    const city = values.city.trim();
+    const budgetCurrency = values.budgetCurrency.trim();
+    const budgetNotes = values.budgetNotes.trim();
+    const currencyMessage = budgetCurrencyMessage(
+      budgetCurrency,
+      budgetMin,
+      budgetMax,
+      budgetNotes,
+    );
+    if (currencyMessage) {
+      set({ status: "error", message: currencyMessage });
+      return;
+    }
+
+    if ((region || city) && !country) {
+      set({
+        status: "error",
+        message: "Country is required when a region or city is set.",
+      });
+      return;
+    }
+
     const token = useAuthStore.getState().token;
     if (!token) {
       set({ status: "error", message: "Authentication required." });
@@ -169,14 +250,14 @@ export const useIcpStore = create<IcpStore>()((set) => ({
     }
 
     const body: CreateIdealCustomerProfileRequest = {
-      name: values.name,
-      industries: splitList(values.industriesInclude),
-      industriesExclude: splitList(values.industriesExclude),
-      country: values.country.trim(),
-      region: values.region.trim(),
-      city: values.city.trim(),
-      budgetCurrency: values.budgetCurrency.trim(),
-      budgetNotes: values.budgetNotes.trim(),
+      name,
+      industries,
+      industriesExclude,
+      country,
+      region,
+      city,
+      budgetCurrency: budgetCurrency.toUpperCase(),
+      budgetNotes,
       businessNeedKeywords: splitList(values.businessNeedKeywords),
       businessNeedDescription: values.businessNeedDescription.trim(),
       outreachTone: values.outreachTone.trim(),

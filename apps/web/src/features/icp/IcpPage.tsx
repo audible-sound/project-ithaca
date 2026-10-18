@@ -5,7 +5,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, type ReactElement } from "react";
 import { Link } from "react-router";
 import { IcpTable } from "./components/IcpTable";
-import { useIcpStore } from "./icpStore";
+import { useIcpStore } from "../../stores/icpStore";
 
 export function IcpPage(): ReactElement {
   const profiles = useIcpStore((state) => state.profiles);

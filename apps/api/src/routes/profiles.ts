@@ -20,6 +20,11 @@ import {
   requireWholeNumber,
   toIso,
 } from "../lib/parse.js";
+import {
+  normalizedBudgetCurrency,
+  profileCreatedMessage,
+  profileCriteriaError,
+} from "../lib/profileInput.js";
 
 export const profilesRouter = Router();
 
@@ -181,22 +186,48 @@ profilesRouter.post("/", async (req, res) => {
     return;
   }
 
+  const industriesInclude = readStringList(body.industries);
+  const industriesExclude = readStringList(body.industriesExclude);
+  const country = readText(body.country);
+  const region = readText(body.region);
+  const city = readText(body.city);
+  const budgetCurrency = readText(body.budgetCurrency);
+  const budgetNotes = readText(body.budgetNotes);
+  const criteriaError = profileCriteriaError({
+    name,
+    industries: industriesInclude,
+    industriesExclude,
+    country,
+    region,
+    city,
+    companySizeMin,
+    companySizeMax,
+    budgetCurrency,
+    budgetMin,
+    budgetMax,
+    budgetNotes,
+  });
+  if (criteriaError) {
+    res.status(400).json({ message: criteriaError });
+    return;
+  }
+
   try {
     const row = await insertIdealCustomerProfile({
       userId,
       name,
-      industriesInclude: readStringList(body.industries),
-      industriesExclude: readStringList(body.industriesExclude),
-      country: readText(body.country),
-      region: readText(body.region),
-      city: readText(body.city),
+      industriesInclude,
+      industriesExclude,
+      country,
+      region,
+      city,
       locations: readStringList(body.locations),
       companySizeMin,
       companySizeMax,
-      budgetCurrency: readText(body.budgetCurrency),
+      budgetCurrency: normalizedBudgetCurrency(budgetCurrency),
       budgetMin,
       budgetMax,
-      budgetNotes: readText(body.budgetNotes),
+      budgetNotes,
       businessNeedKeywords: readStringList(body.businessNeedKeywords),
       businessNeedDescription: readText(body.businessNeedDescription),
       outreachTone: readOptionalText(body.outreachTone),
@@ -204,7 +235,7 @@ profilesRouter.post("/", async (req, res) => {
       isActive: body.isActive !== false,
     });
     const response: CreateIdealCustomerProfileResponse = {
-      message: "Ideal customer profile created.",
+      message: profileCreatedMessage,
       profile: mapProfile(row),
     };
     res.status(201).json(response);

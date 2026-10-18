@@ -7,7 +7,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
-import type { IcpStatus } from "../icpStore";
+import type { IcpStatus } from "../../../stores/icpStore";
 
 type IcpTableProps = {
   profiles: IdealCustomerProfile[];

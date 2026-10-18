@@ -10,7 +10,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useState, type ReactElement, type SubmitEvent } from "react";
-import { useIcpStore, type IcpFormValues } from "./icpStore";
+import { useIcpStore, type IcpFormValues } from "../../stores/icpStore";
 
 const emptyProfile: IcpFormValues = {
   name: "",

@@ -9,7 +9,6 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "tsx --env-file=../../.env --test src/routes/profiles.test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
