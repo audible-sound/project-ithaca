@@ -1,14 +1,16 @@
+import type {
+  WorkflowLeadStatus,
+  WorkflowRunStatus,
+  WorkflowStage,
+  WorkflowStepStatus,
+  WorkflowStepType,
+} from "@ithaca/shared";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type {
-  WorkflowLeadStage,
-  WorkflowLeadStatus,
   WorkflowRun,
   WorkflowRunLead,
-  WorkflowRunStatus,
   WorkflowStep,
-  WorkflowStepStatus,
-  WorkflowStepType,
 } from "../schema/workflows.js";
 import {
   workflowRunLeads,
@@ -32,7 +34,7 @@ export type WorkflowStepDraft = {
 export type WorkflowRunLeadDraft = {
   workflowRunId: string;
   leadId: string;
-  currentStage: WorkflowLeadStage;
+  currentStage: WorkflowStage;
   status: WorkflowLeadStatus;
 };
 
@@ -53,7 +55,7 @@ export type WorkflowStepStatusPatch = {
 };
 
 export type WorkflowRunLeadStatusPatch = {
-  currentStage?: WorkflowLeadStage;
+  currentStage?: WorkflowStage;
   status?: WorkflowLeadStatus;
   errorMessage?: string | null;
 };

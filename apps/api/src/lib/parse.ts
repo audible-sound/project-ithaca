@@ -1,3 +1,10 @@
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return uuidPattern.test(value);
+}
+
 export function asRecord(value: unknown): Record<string, unknown> {
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;

@@ -13,48 +13,6 @@ import { leads } from "./leads.js";
 import { idealCustomerProfiles } from "./profiles.js";
 import { users } from "./users.js";
 
-export const workflowRunStatuses = [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-] as const;
-export type WorkflowRunStatus = (typeof workflowRunStatuses)[number];
-
-export const workflowLeadStages = [
-  "identify",
-  "qualify",
-  "summarize",
-  "draft",
-  "done",
-] as const;
-export type WorkflowLeadStage = (typeof workflowLeadStages)[number];
-
-export const workflowLeadStatuses = [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-  "skipped",
-] as const;
-export type WorkflowLeadStatus = (typeof workflowLeadStatuses)[number];
-
-export const workflowStepTypes = [
-  "identify",
-  "qualify",
-  "summarize",
-  "draft",
-] as const;
-export type WorkflowStepType = (typeof workflowStepTypes)[number];
-
-export const workflowStepStatuses = [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-] as const;
-export type WorkflowStepStatus = (typeof workflowStepStatuses)[number];
-
 export const tokenUsageAgentTypes = [
   "identification",
   "qualification",

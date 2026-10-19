@@ -1,28 +1,47 @@
 import type { IdealCustomerProfileInput } from "./profiles.js";
 
-export type WorkflowStage =
-  | "identify"
-  | "qualify"
-  | "summarize"
-  | "draft"
-  | "done";
+/** Agent execution order is fixed. */
+export const workflowStepTypes = [
+  "identify",
+  "qualify",
+  "summarize",
+  "draft",
+] as const;
+export type WorkflowStepType = (typeof workflowStepTypes)[number];
 
-export type WorkflowRunStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed";
+export const workflowStages = [
+  "identify",
+  "qualify",
+  "summarize",
+  "draft",
+  "done",
+] as const;
+export type WorkflowStage = (typeof workflowStages)[number];
 
-export type WorkflowStepType = "identify" | "qualify" | "summarize" | "draft";
+export const workflowRunStatuses = [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+] as const;
+export type WorkflowRunStatus = (typeof workflowRunStatuses)[number];
 
-export type WorkflowStepStatus = "pending" | "running" | "completed" | "failed";
+export const workflowStepStatuses = [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+] as const;
+export type WorkflowStepStatus = (typeof workflowStepStatuses)[number];
 
-export type WorkflowLeadStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "skipped";
+export const workflowLeadStatuses = [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "skipped",
+] as const;
+export type WorkflowLeadStatus = (typeof workflowLeadStatuses)[number];
 
 export interface LeadWorkflowInput {
   icp: IdealCustomerProfileInput;

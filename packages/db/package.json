@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ithaca/security": "workspace:*",
+    "@ithaca/shared": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.16.0"
   },

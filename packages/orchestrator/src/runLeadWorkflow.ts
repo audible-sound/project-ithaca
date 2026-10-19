@@ -18,6 +18,7 @@ import type {
   WorkflowStep as WorkflowStepRow,
   WorkflowStepStatusPatch,
 } from "@ithaca/db";
+import { workflowStepTypes } from "@ithaca/shared";
 import type {
   AgentStageResult,
   IdealCustomerProfileInput,
@@ -54,9 +55,6 @@ type WorkflowPersistence = {
     patch: WorkflowRunLeadStatusPatch,
   ) => Promise<void>;
 };
-
-/** Agent order is fixed. */
-const stepTypes = ["identify", "qualify", "summarize", "draft"] as const;
 
 const defaultAgents: WorkflowAgents = {
   identify: identifyLeads,
@@ -125,7 +123,7 @@ async function runPersisted(
   const stages: AgentStageResult[] = [];
 
   // Identify, qualify, summarize, and draft run in that order. A failure stops here.
-  for (const stepType of stepTypes) {
+  for (const stepType of workflowStepTypes) {
     const step = steps.find((row) => row.stepType === stepType);
     if (!step) {
       // The run is marked failed and the function returns. Later stages stay pending.

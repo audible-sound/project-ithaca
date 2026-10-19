@@ -164,6 +164,9 @@ importers:
       '@ithaca/security':
         specifier: workspace:*
         version: link:../security
+      '@ithaca/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
