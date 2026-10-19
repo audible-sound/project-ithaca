@@ -243,6 +243,9 @@ importers:
       '@ithaca/agents':
         specifier: workspace:*
         version: link:../agents
+      '@ithaca/db':
+        specifier: workspace:*
+        version: link:../db
       '@ithaca/shared':
         specifier: workspace:*
         version: link:../shared

@@ -4,7 +4,6 @@ import { createPool } from "@ithaca/db";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { authRouter } from "./routes/auth.js";
 import { profilesRouter } from "./routes/profiles.js";
-import { workflowRouter } from "./routes/workflow.js";
 
 const port = Number(process.env.PORT ?? 3001);
 
@@ -23,7 +22,6 @@ app.use(express.json());
 
 app.use("/auth", authRouter);
 app.use("/profiles", requireAuth, profilesRouter);
-app.use("/workflow", requireAuth, workflowRouter);
 
 app.get("/", (_req, res) => {
   res.json({ name: "@ithaca/api", status: "ok" });

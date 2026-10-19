@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ithaca/agents": "workspace:*",
+    "@ithaca/db": "workspace:*",
     "@ithaca/shared": "workspace:*"
   },
   "devDependencies": {

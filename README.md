@@ -59,7 +59,7 @@ pnpm dev
 
 ```
 apps/web            React UI
-apps/api            Express API (auth, workflow smoke route)
+apps/api            Express API (auth, profiles)
 packages/shared     Shared types / DTOs
 packages/db         Drizzle client on the Postgres pool
 packages/security   Password hashing and token signing
