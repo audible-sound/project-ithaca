@@ -6,6 +6,7 @@ export {
   workflowStepTypes,
 } from "./workflow.js";
 export type { SignInRequest, SignInResponse } from "./auth.js";
+export type { LeadSummary, ListLeadsResponse } from "./leads.js";
 export type {
   CreateIdealCustomerProfileRequest,
   CreateIdealCustomerProfileResponse,

@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: DashboardOutlined },
   { label: "Leads", icon: PeopleOutlined },
   { label: "Ideal customer profile", to: "/icp", icon: PersonSearchOutlined },
-  { label: "Workflow runs", icon: AccountTreeOutlined },
+  { label: "Workflow runs", to: "/workflow", icon: AccountTreeOutlined },
 ];
 
 const navItemSx: SxProps<Theme> = {

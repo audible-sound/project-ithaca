@@ -7,11 +7,11 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
-import type { IcpStatus } from "../../../stores/icpStore";
+import type { RequestStatus } from "../../../stores/api";
 
 type IcpTableProps = {
   profiles: IdealCustomerProfile[];
-  status: IcpStatus;
+  status: RequestStatus;
 };
 
 function industriesText(profile: IdealCustomerProfile): string {

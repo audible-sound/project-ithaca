@@ -5,11 +5,8 @@ import type {
   ListIdealCustomerProfilesResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
-import { useAuthStore } from "./authStore";
-
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
-
-export type IcpStatus = "idle" | "loading" | "ready" | "error";
+import { apiUrl, authToken, readJson } from "./api";
+import type { RequestStatus } from "./api";
 
 export type IcpFormValues = {
   name: string;
@@ -33,9 +30,9 @@ export type IcpFormValues = {
 
 type IcpStore = {
   message: string | null;
-  status: IcpStatus;
+  status: RequestStatus;
   profiles: IdealCustomerProfile[];
-  listStatus: IcpStatus;
+  listStatus: RequestStatus;
   listMessage: string | null;
   createProfile: (values: IcpFormValues) => Promise<void>;
   loadProfiles: () => Promise<void>;
@@ -108,7 +105,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
   listStatus: "idle",
   listMessage: null,
   loadProfiles: async () => {
-    const token = useAuthStore.getState().token;
+    const token = authToken();
     if (!token) {
       set({ listStatus: "error", listMessage: "Authentication required." });
       return;
@@ -120,17 +117,10 @@ export const useIcpStore = create<IcpStore>()((set) => ({
       const res = await fetch(`${apiUrl}/profiles`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      let data: Partial<ListIdealCustomerProfilesResponse> & { message?: string };
-      try {
-        data = (await res.json()) as Partial<ListIdealCustomerProfilesResponse> & {
-          message?: string;
-        };
-      } catch {
-        set({ listMessage: "Failed to reach API", listStatus: "error" });
-        return;
-      }
-
-      if (!res.ok) {
+      const data = await readJson<
+        Partial<ListIdealCustomerProfilesResponse> & { message?: string }
+      >(res);
+      if (!res.ok || !("profiles" in data)) {
         set({
           listMessage: data.message ?? "Failed to reach API",
           listStatus: "error",
@@ -243,7 +233,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
       return;
     }
 
-    const token = useAuthStore.getState().token;
+    const token = authToken();
     if (!token) {
       set({ status: "error", message: "Authentication required." });
       return;
@@ -280,16 +270,19 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         },
         body: JSON.stringify(body),
       });
-      let data: Partial<CreateIdealCustomerProfileResponse>;
-      try {
-        data = (await res.json()) as Partial<CreateIdealCustomerProfileResponse>;
-      } catch {
-        set({ message: "Failed to reach API", status: "error" });
+      const data = await readJson<Partial<CreateIdealCustomerProfileResponse>>(
+        res,
+      );
+      if (!res.ok || !("profile" in data) || !data.profile) {
+        set({
+          message: data.message ?? "Failed to reach API",
+          status: "error",
+        });
         return;
       }
       set({
         message: data.message ?? null,
-        status: res.ok ? "ready" : "error",
+        status: "ready",
       });
     } catch (err) {
       set({

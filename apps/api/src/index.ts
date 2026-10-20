@@ -3,6 +3,7 @@ import express from "express";
 import { createPool } from "@ithaca/db";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { authRouter } from "./routes/auth.js";
+import { leadsRouter } from "./routes/leads.js";
 import { profilesRouter } from "./routes/profiles.js";
 import { workflowRouter } from "./routes/workflow.js";
 
@@ -23,6 +24,7 @@ app.use(express.json());
 
 app.use("/auth", authRouter);
 app.use("/profiles", requireAuth, profilesRouter);
+app.use("/leads", requireAuth, leadsRouter);
 app.use("/workflow", requireAuth, workflowRouter);
 
 app.get("/", (_req, res) => {

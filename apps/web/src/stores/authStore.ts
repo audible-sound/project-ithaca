@@ -1,16 +1,14 @@
 import type { SignInResponse } from "@ithaca/shared";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
-
-type AuthStatus = "idle" | "loading" | "ready" | "error";
+import { apiUrl, readJson } from "./api";
+import type { RequestStatus } from "./api";
 
 type AuthStore = {
   message: string | null;
   token: string | null;
   name: string | null;
-  status: AuthStatus;
+  status: RequestStatus;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
 };
@@ -31,12 +29,13 @@ export const useAuthStore = create<AuthStore>()(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password }),
           });
-          const data = (await res.json()) as SignInResponse;
-          const token = data.token ?? null;
+          const data = await readJson<SignInResponse>(res);
+          const token = "token" in data ? (data.token ?? null) : null;
           set({
             message: data.message,
             token,
-            name: res.ok && token ? (data.name ?? null) : null,
+            name:
+              res.ok && token && "name" in data ? (data.name ?? null) : null,
             status: res.ok ? "ready" : "error",
           });
         } catch (err) {

@@ -6,6 +6,9 @@ import { SignInRoute } from "./features/auth/SignInRoute";
 import { HomePage } from "./features/home/HomePage";
 import { IcpFormPage } from "./features/icp/IcpFormPage";
 import { IcpPage } from "./features/icp/IcpPage";
+import { WorkflowFormPage } from "./features/workflow/WorkflowFormPage";
+import { WorkflowPage } from "./features/workflow/WorkflowPage";
+import { WorkflowRunPage } from "./features/workflow/WorkflowRunPage";
 import { AppLayout } from "./layouts/AppLayout";
 import { theme } from "./theme/theme";
 
@@ -20,6 +23,9 @@ export function App(): ReactElement {
               <Route path="/" element={<HomePage />} />
               <Route path="/icp" element={<IcpPage />} />
               <Route path="/icp/new" element={<IcpFormPage />} />
+              <Route path="/workflow" element={<WorkflowPage />} />
+              <Route path="/workflow/new" element={<WorkflowFormPage />} />
+              <Route path="/workflow/:workflowRunId" element={<WorkflowRunPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
