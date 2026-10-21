@@ -16,6 +16,7 @@ export type {
 } from "./profiles.js";
 export type {
   AgentStageResult,
+  IdentifiedLeadCandidate,
   LeadWorkflowInput,
   LeadWorkflowResult,
   ListWorkflowRunsResponse,

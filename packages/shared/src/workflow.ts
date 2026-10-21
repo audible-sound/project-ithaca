@@ -48,10 +48,26 @@ export interface LeadWorkflowInput {
   leadIds?: string[];
 }
 
+export interface IdentifiedLeadCandidate {
+  companyName: string;
+  website?: string;
+  description?: string;
+  contactName?: string;
+  jobTitle?: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
+  sourceUrl?: string;
+  sourceTitle?: string;
+  rawSnippet?: string;
+}
+
 export interface AgentStageResult {
   stage: Exclude<WorkflowStage, "done">;
   status: "completed" | "failed" | "skipped";
   message: string;
+  /** Omitted means this stage did not search any companies. An empty array means identify found no companies. */
+  candidates?: IdentifiedLeadCandidate[];
   data?: Record<string, unknown>;
 }
 
