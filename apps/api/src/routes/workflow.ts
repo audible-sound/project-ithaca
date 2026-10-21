@@ -267,6 +267,7 @@ workflowRouter.post("/runs", async (req, res) => {
     const icp = toWorkflowIcp(mapProfile(profile));
     void runLeadWorkflow({
       workflowRunId: run.workflowRunId,
+      userId,
       icp,
       leadIds,
     }).catch((err: unknown) => {

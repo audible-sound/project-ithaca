@@ -5,6 +5,8 @@ import {
   summarizeLeads,
 } from "@ithaca/agents";
 import {
+  insertIdentifiedLead,
+  insertWorkflowRunLeads,
   listWorkflowRunLeadsByRunId,
   listWorkflowStepsByRunId,
   updateWorkflowRunLeadStatus,
@@ -12,7 +14,10 @@ import {
   updateWorkflowStepStatus,
 } from "@ithaca/db";
 import type {
+  IdentifiedLeadDraft,
+  InsertIdentifiedLeadResult,
   WorkflowRunLead as WorkflowRunLeadRow,
+  WorkflowRunLeadDraft,
   WorkflowRunLeadStatusPatch,
   WorkflowRunStatusPatch,
   WorkflowStep as WorkflowStepRow,
@@ -30,6 +35,7 @@ import type {
 
 export type RunLeadWorkflowInput = LeadWorkflowInput & {
   workflowRunId: string;
+  userId: string;
 };
 
 type WorkflowStageAgent = (
@@ -54,6 +60,12 @@ type WorkflowPersistence = {
     leadId: string,
     patch: WorkflowRunLeadStatusPatch,
   ) => Promise<void>;
+  insertIdentifiedLead: (
+    input: IdentifiedLeadDraft & { userId: string },
+  ) => Promise<InsertIdentifiedLeadResult>;
+  insertRunLeads: (
+    drafts: WorkflowRunLeadDraft[],
+  ) => Promise<WorkflowRunLeadRow[]>;
 };
 
 const defaultAgents: WorkflowAgents = {
@@ -75,6 +87,8 @@ const defaultPersistence: WorkflowPersistence = {
   async updateRunLead(workflowRunId, leadId, patch) {
     await updateWorkflowRunLeadStatus(workflowRunId, leadId, patch);
   },
+  insertIdentifiedLead,
+  insertRunLeads: insertWorkflowRunLeads,
 };
 
 function databaseUnavailable(error: unknown): boolean {
@@ -99,6 +113,7 @@ export async function runLeadWorkflow(
 ): Promise<LeadWorkflowResult> {
   return runPersisted(
     input.workflowRunId,
+    input.userId,
     input.icp,
     defaultAgents,
     defaultPersistence,
@@ -107,6 +122,7 @@ export async function runLeadWorkflow(
 
 async function runPersisted(
   workflowRunId: string,
+  userId: string,
   icp: IdealCustomerProfileInput,
   agents: WorkflowAgents,
   persistence: WorkflowPersistence,
@@ -119,7 +135,7 @@ async function runPersisted(
   });
 
   const steps = await persistence.listSteps(workflowRunId);
-  const leads = await persistence.listRunLeads(workflowRunId);
+  let leads = await persistence.listRunLeads(workflowRunId);
   const stages: AgentStageResult[] = [];
 
   // Identify, qualify, summarize, and draft run in that order. A failure stops here.
@@ -173,7 +189,16 @@ async function runPersisted(
     const agentStartedAt = new Date();
     let result: AgentStageResult;
     try {
-      result = await agents[stepType](icp);
+      if (stepType === "identify" && leads.length > 0) {
+        result = {
+          stage: "identify",
+          status: "completed",
+          message:
+            "Selected leads were already attached. Lead identification did not search for companies.",
+        };
+      } else {
+        result = await agents[stepType](icp);
+      }
     } catch (error) {
       const message = thrownMessage(error);
       await failStage(
@@ -202,6 +227,54 @@ async function runPersisted(
       );
       stages.push(result);
       return { status: "failed", stages };
+    }
+
+    if (
+      stepType === "identify" &&
+      result.status === "completed" &&
+      result.candidates !== undefined &&
+      result.candidates.length > 0
+    ) {
+      const seen = new Set(leads.map((lead) => lead.leadId));
+      const drafts: WorkflowRunLeadDraft[] = [];
+      let leadsForFailure = leads;
+
+      try {
+        for (const candidate of result.candidates) {
+          const stored = await persistence.insertIdentifiedLead({
+            userId,
+            ...candidate,
+          });
+          if (seen.has(stored.leadId)) {
+            continue;
+          }
+          seen.add(stored.leadId);
+          drafts.push({
+            workflowRunId,
+            leadId: stored.leadId,
+            currentStage: "identify",
+            status: "pending",
+          });
+        }
+
+        const inserted = await persistence.insertRunLeads(drafts);
+        leadsForFailure = inserted;
+        // Reload so later stages update the new rows. The pre-identify list would leave them pending.
+        leads = await persistence.listRunLeads(workflowRunId);
+      } catch (error) {
+        const message = thrownMessage(error);
+        await failStage(
+          persistence,
+          workflowRunId,
+          step,
+          leadsForFailure,
+          stepType,
+          message,
+          durationMs,
+        );
+        stages.push({ stage: stepType, status: "failed", message });
+        return { status: "failed", stages };
+      }
     }
 
     // The stage is marked completed and its duration is saved.
