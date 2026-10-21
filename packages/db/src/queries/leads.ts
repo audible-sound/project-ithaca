@@ -1,12 +1,40 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type { Lead } from "../schema/leads.js";
-import { companies, leads } from "../schema/leads.js";
+import { companies, contacts, leads, sourceReferences } from "../schema/leads.js";
 
 export type LeadListRow = Lead & {
   companyName: string;
 };
 
+export type IdentifiedLeadDraft = {
+  companyName: string;
+  website?: string;
+  description?: string;
+  contactName?: string;
+  jobTitle?: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
+  sourceUrl?: string;
+  sourceTitle?: string;
+  rawSnippet?: string;
+};
+
+export type InsertIdentifiedLeadResult = {
+  leadId: string;
+  storedContact: boolean;
+};
+
+/**
+ * Trims a string and returns undefined if it is empty.
+ * @param value - The string to trim.
+ * @returns The trimmed string if it is not empty, otherwise undefined.
+ */
+function trimmedOrAbsent(value: string | undefined): string | undefined {
+  const trimmed = value?.trim() ?? "";
+  return trimmed === "" ? undefined : trimmed;
+}
 
 /**
  * Finds a lead by its ID for a specific user.
@@ -71,4 +99,151 @@ export async function listLeadsByUser(userId: string): Promise<LeadListRow[]> {
     .innerJoin(companies, eq(leads.companyId, companies.companyId))
     .where(eq(leads.createdByUserId, userId))
     .orderBy(desc(leads.createdAt), desc(leads.leadId));
+}
+
+/**
+ * Stores one identified company, optional contact, lead, and Exa source.
+ * Reuses this user's lead when the trimmed website matches, ignoring case.
+ * @param input - The signed-in user and the identified lead fields.
+ * @returns The lead id, and whether this call wrote a contact row.
+ */
+export async function insertIdentifiedLead(
+  input: IdentifiedLeadDraft & { userId: string },
+): Promise<InsertIdentifiedLeadResult> {
+  const companyName = trimmedOrAbsent(input.companyName);
+  if (companyName === undefined) {
+    throw new Error("Company name is required.");
+  }
+
+  const website = trimmedOrAbsent(input.website);
+  const description = trimmedOrAbsent(input.description);
+  const contactName = trimmedOrAbsent(input.contactName);
+  const jobTitle = trimmedOrAbsent(input.jobTitle);
+  const email = trimmedOrAbsent(input.email);
+  const phone = trimmedOrAbsent(input.phone);
+  const linkedinUrl = trimmedOrAbsent(input.linkedinUrl);
+  const sourceUrl = trimmedOrAbsent(input.sourceUrl);
+  const sourceTitle = trimmedOrAbsent(input.sourceTitle);
+  const rawSnippet = trimmedOrAbsent(input.rawSnippet);
+  const websiteKey = website?.toLowerCase();
+
+  return requireDb().transaction(async (tx) => {
+    const now = new Date();
+    let existing: { leadId: string; companyId: string } | undefined;
+
+    if (websiteKey !== undefined) {
+      const matches = await tx
+        .select({
+          leadId: leads.leadId,
+          companyId: leads.companyId,
+        })
+        .from(leads)
+        .innerJoin(companies, eq(leads.companyId, companies.companyId))
+        .where(
+          and(
+            eq(leads.createdByUserId, input.userId),
+            sql`lower(trim(${companies.website})) = ${websiteKey}`,
+          ),
+        )
+        .orderBy(desc(leads.createdAt), desc(leads.leadId))
+        .limit(1);
+
+      existing = matches[0];
+    }
+
+    let leadId: string;
+    let companyId: string;
+    let contactId: string | null = null;
+    let storedContact = false;
+
+    if (existing) {
+      leadId = existing.leadId;
+      companyId = existing.companyId;
+    } else {
+      const companyRows = await tx
+        .insert(companies)
+        .values({
+          name: companyName,
+          website: website ?? null,
+          industry: null,
+          sizeBand: null,
+          location: null,
+          description: description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      const company = companyRows[0];
+      if (!company) {
+        throw new Error("Company was not created.");
+      }
+
+      companyId = company.companyId;
+
+      if (contactName !== undefined) {
+        const contactRows = await tx
+          .insert(contacts)
+          .values({
+            companyId,
+            fullName: contactName,
+            jobTitle: jobTitle ?? null,
+            email: email ?? null,
+            phone: phone ?? null,
+            linkedinUrl: linkedinUrl ?? null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+
+        const contact = contactRows[0];
+        if (!contact) {
+          throw new Error("Contact was not created.");
+        }
+
+        contactId = contact.contactId;
+        storedContact = true;
+      }
+
+      const leadRows = await tx
+        .insert(leads)
+        .values({
+          companyId,
+          primaryContactId: contactId,
+          createdByUserId: input.userId,
+          sourceType: "identified",
+          lifecycleStatus: "identified",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      const lead = leadRows[0];
+      if (!lead) {
+        throw new Error("Lead was not created.");
+      }
+
+      leadId = lead.leadId;
+    }
+
+    const sourceRows = await tx
+      .insert(sourceReferences)
+      .values({
+        companyId,
+        contactId,
+        leadId,
+        sourceProvider: "exa",
+        sourceUrl: sourceUrl ?? null,
+        sourceTitle: sourceTitle ?? null,
+        retrievedAt: now,
+        rawSnippet: rawSnippet ?? null,
+      })
+      .returning();
+
+    if (!sourceRows[0]) {
+      throw new Error("Source reference was not created.");
+    }
+
+    return { leadId, storedContact };
+  });
 }
