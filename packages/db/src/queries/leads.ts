@@ -2,9 +2,23 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type { Lead } from "../schema/leads.js";
 import { companies, contacts, leads, sourceReferences } from "../schema/leads.js";
+import { emailDeliveries, outreachDrafts } from "../schema/outreach.js";
+import { leadQualifications } from "../schema/reviews.js";
+import { users } from "../schema/users.js";
+import { workflowRunLeads, workflowRuns } from "../schema/workflows.js";
 
 export type LeadListRow = Lead & {
   companyName: string;
+};
+
+export type LeadListDetailRow = Lead & {
+  companyName: string;
+  ownerName: string | null;
+  contactName: string | null;
+  score: string | null;
+  priorityLabel: string | null;
+  latestStage: string | null;
+  followUpDueAt: Date | null;
 };
 
 export type IdentifiedLeadDraft = {
@@ -99,6 +113,103 @@ export async function listLeadsByUser(userId: string): Promise<LeadListRow[]> {
     .innerJoin(companies, eq(leads.companyId, companies.companyId))
     .where(eq(leads.createdByUserId, userId))
     .orderBy(desc(leads.createdAt), desc(leads.leadId));
+}
+
+/**
+ * Lists leads from all owners with company, contact, owner, qualification,
+ * latest workflow stage, and earliest follow-up due date, ranked by score.
+ * @returns One row per lead, highest score first and unscored leads last.
+ */
+export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
+  const db = requireDb();
+  const rows = await db
+    .select({
+      leadId: leads.leadId,
+      companyId: leads.companyId,
+      primaryContactId: leads.primaryContactId,
+      createdByUserId: leads.createdByUserId,
+      sourceType: leads.sourceType,
+      lifecycleStatus: leads.lifecycleStatus,
+      createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
+      companyName: companies.name,
+      ownerName: users.fullName,
+      contactName: contacts.fullName,
+      score: leadQualifications.score,
+      priorityLabel: leadQualifications.priorityLabel,
+    })
+    .from(leads)
+    .innerJoin(companies, eq(leads.companyId, companies.companyId))
+    .leftJoin(contacts, eq(leads.primaryContactId, contacts.contactId))
+    .leftJoin(users, eq(leads.createdByUserId, users.userId))
+    .leftJoin(
+      leadQualifications,
+      eq(leadQualifications.leadId, leads.leadId),
+    )
+    .orderBy(
+      sql`${leadQualifications.score} DESC NULLS LAST`,
+      desc(leads.createdAt),
+      desc(leads.leadId),
+    );
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const leadIds = rows.map((row) => row.leadId);
+
+  const stageRows = await db
+    .select({
+      leadId: workflowRunLeads.leadId,
+      currentStage: workflowRunLeads.currentStage,
+    })
+    .from(workflowRunLeads)
+    .innerJoin(
+      workflowRuns,
+      eq(workflowRunLeads.workflowRunId, workflowRuns.workflowRunId),
+    )
+    .where(inArray(workflowRunLeads.leadId, leadIds))
+    .orderBy(
+      sql`${workflowRuns.startedAt} DESC NULLS LAST`,
+      desc(workflowRuns.workflowRunId),
+    );
+
+  const latestStageByLeadId = new Map<string, string>();
+  for (const row of stageRows) {
+    if (!latestStageByLeadId.has(row.leadId)) {
+      latestStageByLeadId.set(row.leadId, row.currentStage);
+    }
+  }
+
+  const followUpRows = await db
+    .select({
+      leadId: outreachDrafts.leadId,
+      followUpDueAt: emailDeliveries.followUpDueAt,
+    })
+    .from(outreachDrafts)
+    .innerJoin(
+      emailDeliveries,
+      eq(emailDeliveries.outreachDraftId, outreachDrafts.outreachDraftId),
+    )
+    .where(inArray(outreachDrafts.leadId, leadIds));
+
+  const followUpDueAtByLeadId = new Map<string, Date>();
+  for (const row of followUpRows) {
+    if (row.followUpDueAt === null) {
+      continue;
+    }
+
+    const current = followUpDueAtByLeadId.get(row.leadId);
+    if (current === undefined || row.followUpDueAt < current) {
+      followUpDueAtByLeadId.set(row.leadId, row.followUpDueAt);
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    latestStage: latestStageByLeadId.get(row.leadId) ?? null,
+    followUpDueAt: followUpDueAtByLeadId.get(row.leadId) ?? null,
+  }));
 }
 
 /**

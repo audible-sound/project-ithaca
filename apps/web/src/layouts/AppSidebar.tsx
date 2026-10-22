@@ -27,7 +27,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: DashboardOutlined },
-  { label: "Leads", icon: PeopleOutlined },
+  { label: "Leads", to: "/leads", icon: PeopleOutlined },
   { label: "Ideal customer profile", to: "/icp", icon: PersonSearchOutlined },
   { label: "Workflow runs", to: "/workflow", icon: AccountTreeOutlined },
 ];
