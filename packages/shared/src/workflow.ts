@@ -68,6 +68,8 @@ export interface AgentStageResult {
   message: string;
   /** Omitted means this stage did not search any companies. An empty array means identify found no companies. */
   candidates?: IdentifiedLeadCandidate[];
+  /** Dollar cost reported by the external provider for this stage, when it returns one. */
+  estimatedCost?: number;
   data?: Record<string, unknown>;
 }
 

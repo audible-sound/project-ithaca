@@ -12,6 +12,11 @@ export interface CompanySearchResult {
   sourceUrl?: string;
 }
 
+export interface CompanySearchResponse {
+  companies: CompanySearchResult[];
+  estimatedCost?: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -137,9 +142,22 @@ function readResults(body: unknown): unknown[] {
   return body.results;
 }
 
+function readEstimatedCost(body: unknown): number | undefined {
+  if (!isRecord(body) || !isRecord(body.costDollars)) {
+    return undefined;
+  }
+
+  const total = body.costDollars.total;
+  if (typeof total !== "number" || !Number.isFinite(total) || total < 0) {
+    return undefined;
+  }
+
+  return total;
+}
+
 export async function searchCompanies(
   query: CompanySearchQuery,
-): Promise<CompanySearchResult[]> {
+): Promise<CompanySearchResponse> {
   const apiKey = readExaApiKey();
   const response = await fetch("https://api.exa.ai/search", {
     method: "POST",
@@ -175,5 +193,11 @@ export async function searchCompanies(
     }
   }
 
-  return companies;
+  const searchResponse: CompanySearchResponse = { companies };
+  const estimatedCost = readEstimatedCost(body);
+  if (estimatedCost !== undefined) {
+    searchResponse.estimatedCost = estimatedCost;
+  }
+
+  return searchResponse;
 }

@@ -8,11 +8,14 @@ import type {
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type {
+  TokenUsage,
+  TokenUsageAgentType,
   WorkflowRun,
   WorkflowRunLead,
   WorkflowStep,
 } from "../schema/workflows.js";
 import {
+  tokenUsages,
   workflowRunLeads,
   workflowRuns,
   workflowSteps,
@@ -36,6 +39,14 @@ export type WorkflowRunLeadDraft = {
   leadId: string;
   currentStage: WorkflowStage;
   status: WorkflowLeadStatus;
+};
+
+export type TokenUsageDraft = {
+  workflowRunId: string;
+  workflowStepId: string;
+  agentType: TokenUsageAgentType;
+  modelName: string;
+  estimatedCost: string;
 };
 
 export type WorkflowRunStatusPatch = {
@@ -220,6 +231,31 @@ export async function insertWorkflowRunLeads(
   }
 
   return rows;
+}
+
+export async function insertTokenUsage(
+  draft: TokenUsageDraft,
+): Promise<TokenUsage> {
+  const rows = await requireDb()
+    .insert(tokenUsages)
+    .values({
+      workflowRunId: draft.workflowRunId,
+      workflowStepId: draft.workflowStepId,
+      agentType: draft.agentType,
+      modelName: draft.modelName,
+      promptTokens: null,
+      completionTokens: null,
+      estimatedCost: draft.estimatedCost,
+      createdAt: new Date(),
+    })
+    .returning();
+
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Token usage was not created.");
+  }
+
+  return row;
 }
 
 /**

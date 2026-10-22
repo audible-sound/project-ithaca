@@ -28,15 +28,15 @@ function toIdentifiedLeadCandidate(
 export async function identifyLeads(
   icp: IdealCustomerProfileInput,
 ): Promise<AgentStageResult> {
-  const results = await searchCompanies({
+  const search = await searchCompanies({
     industries: icp.industries,
     locations: icp.locations,
     keywords: icp.businessNeedKeywords,
   });
 
-  const candidates = results.map(toIdentifiedLeadCandidate);
+  const candidates = search.companies.map(toIdentifiedLeadCandidate);
 
-  return {
+  const result: AgentStageResult = {
     stage: "identify",
     status: "completed",
     message:
@@ -45,4 +45,9 @@ export async function identifyLeads(
         : "Potential B2B companies returned from publicly accessible sources that match the ideal customer profile.",
     candidates,
   };
+  if (search.estimatedCost !== undefined) {
+    result.estimatedCost = search.estimatedCost;
+  }
+
+  return result;
 }

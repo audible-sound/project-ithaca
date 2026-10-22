@@ -6,6 +6,7 @@ import {
 } from "@ithaca/agents";
 import {
   insertIdentifiedLead,
+  insertTokenUsage,
   insertWorkflowRunLeads,
   listWorkflowRunLeadsByRunId,
   listWorkflowStepsByRunId,
@@ -16,6 +17,7 @@ import {
 import type {
   IdentifiedLeadDraft,
   InsertIdentifiedLeadResult,
+  TokenUsageDraft,
   WorkflowRunLead as WorkflowRunLeadRow,
   WorkflowRunLeadDraft,
   WorkflowRunLeadStatusPatch,
@@ -66,6 +68,7 @@ type WorkflowPersistence = {
   insertRunLeads: (
     drafts: WorkflowRunLeadDraft[],
   ) => Promise<WorkflowRunLeadRow[]>;
+  insertTokenUsage: (draft: TokenUsageDraft) => Promise<void>;
 };
 
 const defaultAgents: WorkflowAgents = {
@@ -89,6 +92,9 @@ const defaultPersistence: WorkflowPersistence = {
   },
   insertIdentifiedLead,
   insertRunLeads: insertWorkflowRunLeads,
+  async insertTokenUsage(draft) {
+    await insertTokenUsage(draft);
+  },
 };
 
 function databaseUnavailable(error: unknown): boolean {
@@ -227,6 +233,35 @@ async function runPersisted(
       );
       stages.push(result);
       return { status: "failed", stages };
+    }
+
+    if (
+      stepType === "identify" &&
+      result.status === "completed" &&
+      result.estimatedCost !== undefined
+    ) {
+      try {
+        await persistence.insertTokenUsage({
+          workflowRunId,
+          workflowStepId: step.workflowStepId,
+          agentType: "identification",
+          modelName: "exa",
+          estimatedCost: String(result.estimatedCost),
+        });
+      } catch (error) {
+        const message = thrownMessage(error);
+        await failStage(
+          persistence,
+          workflowRunId,
+          step,
+          leads,
+          stepType,
+          message,
+          durationMs,
+        );
+        stages.push({ stage: stepType, status: "failed", message });
+        return { status: "failed", stages };
+      }
     }
 
     if (
