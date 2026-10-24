@@ -1,9 +1,9 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
-import type { Lead } from "../schema/leads.js";
+import type { Lead, SourceReference } from "../schema/leads.js";
 import { companies, contacts, leads, sourceReferences } from "../schema/leads.js";
 import { emailDeliveries, outreachDrafts } from "../schema/outreach.js";
-import { leadQualifications } from "../schema/reviews.js";
+import { leadQualifications, leadSummaries } from "../schema/reviews.js";
 import { users } from "../schema/users.js";
 import { workflowRunLeads, workflowRuns } from "../schema/workflows.js";
 
@@ -19,6 +19,39 @@ export type LeadListDetailRow = Lead & {
   priorityLabel: string | null;
   latestStage: string | null;
   followUpDueAt: Date | null;
+};
+
+export type LeadDetailRow = {
+  leadId: string;
+  companyId: string;
+  primaryContactId: string | null;
+  createdByUserId: string | null;
+  sourceType: string;
+  lifecycleStatus: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  companyName: string;
+  website: string | null;
+  industry: string | null;
+  location: string | null;
+  companySizeBand: string | null;
+  description: string | null;
+  ownerName: string | null;
+  contactFullName: string | null;
+  contactJobTitle: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  contactLinkedinUrl: string | null;
+  qualificationScore: string | null;
+  qualificationPriorityLabel: string | null;
+  qualificationFitLabel: string | null;
+  qualificationExplanation: string | null;
+  qualificationEvidence: unknown;
+  qualificationCriteriaBreakdown: unknown;
+  qualificationIsUserOverride: boolean | null;
+  summaryText: string | null;
+  summaryStructuredReport: unknown;
+  summaryIsUserOverride: boolean | null;
 };
 
 export type IdentifiedLeadDraft = {
@@ -64,6 +97,62 @@ export async function findLeadById(
     .select()
     .from(leads)
     .where(and(eq(leads.leadId, leadId), eq(leads.createdByUserId, userId)))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+/**
+ * Finds a lead detail by its ID.
+ * @param leadId - The ID of the lead to find.
+ * @returns The lead detail if found, otherwise null.
+ */
+export async function findLeadDetailById(
+  leadId: string,
+): Promise<LeadDetailRow | null> {
+  const rows = await requireDb()
+    .select({
+      leadId: leads.leadId,
+      companyId: leads.companyId,
+      primaryContactId: leads.primaryContactId,
+      createdByUserId: leads.createdByUserId,
+      sourceType: leads.sourceType,
+      lifecycleStatus: leads.lifecycleStatus,
+      createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
+      companyName: companies.name,
+      website: companies.website,
+      industry: companies.industry,
+      location: companies.location,
+      companySizeBand: companies.sizeBand,
+      description: companies.description,
+      ownerName: users.fullName,
+      contactFullName: contacts.fullName,
+      contactJobTitle: contacts.jobTitle,
+      contactEmail: contacts.email,
+      contactPhone: contacts.phone,
+      contactLinkedinUrl: contacts.linkedinUrl,
+      qualificationScore: leadQualifications.score,
+      qualificationPriorityLabel: leadQualifications.priorityLabel,
+      qualificationFitLabel: leadQualifications.fitLabel,
+      qualificationExplanation: leadQualifications.explanation,
+      qualificationEvidence: leadQualifications.evidence,
+      qualificationCriteriaBreakdown: leadQualifications.criteriaBreakdown,
+      qualificationIsUserOverride: leadQualifications.isUserOverride,
+      summaryText: leadSummaries.summaryText,
+      summaryStructuredReport: leadSummaries.structuredReport,
+      summaryIsUserOverride: leadSummaries.isUserOverride,
+    })
+    .from(leads)
+    .innerJoin(companies, eq(leads.companyId, companies.companyId))
+    .leftJoin(contacts, eq(leads.primaryContactId, contacts.contactId))
+    .leftJoin(users, eq(leads.createdByUserId, users.userId))
+    .leftJoin(
+      leadQualifications,
+      eq(leadQualifications.leadId, leads.leadId),
+    )
+    .leftJoin(leadSummaries, eq(leadSummaries.leadId, leads.leadId))
+    .where(eq(leads.leadId, leadId))
     .limit(1);
 
   return rows[0] ?? null;
@@ -210,6 +299,26 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
     latestStage: latestStageByLeadId.get(row.leadId) ?? null,
     followUpDueAt: followUpDueAtByLeadId.get(row.leadId) ?? null,
   }));
+}
+
+export async function listSourceReferencesByLeadId(
+  leadId: string,
+  companyId: string,
+  contactId: string | null,
+): Promise<SourceReference[]> {
+  const conditions = [
+    eq(sourceReferences.leadId, leadId),
+    eq(sourceReferences.companyId, companyId),
+  ];
+  if (contactId !== null) {
+    conditions.push(eq(sourceReferences.contactId, contactId));
+  }
+
+  return requireDb()
+    .select()
+    .from(sourceReferences)
+    .where(or(...conditions))
+    .orderBy(desc(sourceReferences.retrievedAt), desc(sourceReferences.sourceReferenceId));
 }
 
 /**

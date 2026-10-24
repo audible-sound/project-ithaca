@@ -1,4 +1,4 @@
-import type { LeadListItem, LeadListStage } from "@ithaca/shared";
+import type { LeadListItem } from "@ithaca/shared";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
@@ -9,7 +9,10 @@ import TableRow from "@mui/material/TableRow";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import Typography from "@mui/material/Typography";
 import { useState, type ReactElement } from "react";
+import { Link } from "react-router";
 import type { RequestStatus } from "../../../stores/api";
+import { capitalize } from "../../../utils/string";
+import { leadStageLabel } from "../leadLabels";
 
 type LeadTableProps = {
   leads: LeadListItem[];
@@ -17,17 +20,6 @@ type LeadTableProps = {
 };
 
 type ScoreDirection = "asc" | "desc";
-
-const stageLabels: Record<LeadListStage, string> = {
-  not_started: "Not started",
-  identify: "Identify",
-  qualify: "Qualify",
-  summarize: "Summarize",
-  draft: "Draft",
-  done: "Done",
-  follow_up: "Follow-up",
-  closed: "Closed",
-};
 
 function sourceLabel(lead: LeadListItem): string {
   return lead.sourceType === "manual" ? "Manual" : "Website";
@@ -38,7 +30,7 @@ function priorityLabel(lead: LeadListItem): string {
     return "—";
   }
 
-  return lead.priority.charAt(0).toUpperCase() + lead.priority.slice(1);
+  return capitalize(lead.priority);
 }
 
 function sortedLeads(
@@ -122,14 +114,27 @@ export function LeadTable({ leads, status }: LeadTableProps): ReactElement | nul
           </TableHead>
           <TableBody>
             {rows.map((lead) => (
-              <TableRow key={lead.leadId}>
-                <TableCell>{lead.companyName}</TableCell>
+              <TableRow key={lead.leadId} hover>
+                <TableCell>
+                  <Typography
+                    variant="body2"
+                    component={Link}
+                    to={`/leads/${lead.leadId}`}
+                    sx={{
+                      color: "primary.main",
+                      textDecoration: "none",
+                      "&:hover": { textDecoration: "underline" },
+                    }}
+                  >
+                    {lead.companyName}
+                  </Typography>
+                </TableCell>
                 <TableCell>{lead.ownerName ?? "—"}</TableCell>
                 <TableCell>{lead.contactName ?? "—"}</TableCell>
                 <TableCell>{sourceLabel(lead)}</TableCell>
                 <TableCell>{lead.score ?? "—"}</TableCell>
                 <TableCell>{priorityLabel(lead)}</TableCell>
-                <TableCell>{stageLabels[lead.stage]}</TableCell>
+                <TableCell>{leadStageLabel(lead.stage)}</TableCell>
                 <TableCell>
                   {lead.followUpDue ? (
                     <Typography

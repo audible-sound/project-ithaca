@@ -143,6 +143,44 @@ export async function listWorkflowRunLeadsByRunId(
     .orderBy(asc(workflowRunLeads.leadId));
 }
 
+export type WorkflowRunLeadByLeadRow = WorkflowRunLead & {
+  runStatus: string;
+  runStartedAt: Date | null;
+};
+
+
+/**
+ * Find the workflow run stages for a lead.
+ * @param leadId - The ID of the lead to list workflow run leads for.
+ * @returns The workflow run leads if found, otherwise an empty array.
+ */
+export async function listWorkflowRunLeadsByLeadId(
+  leadId: string,
+): Promise<WorkflowRunLeadByLeadRow[]> {
+  const rows = await requireDb()
+    .select({
+      workflowRunId: workflowRunLeads.workflowRunId,
+      leadId: workflowRunLeads.leadId,
+      currentStage: workflowRunLeads.currentStage,
+      status: workflowRunLeads.status,
+      errorMessage: workflowRunLeads.errorMessage,
+      runStatus: workflowRuns.status,
+      runStartedAt: workflowRuns.startedAt,
+    })
+    .from(workflowRunLeads)
+    .innerJoin(
+      workflowRuns,
+      eq(workflowRunLeads.workflowRunId, workflowRuns.workflowRunId),
+    )
+    .where(eq(workflowRunLeads.leadId, leadId))
+    .orderBy(
+      sql`${workflowRuns.startedAt} DESC NULLS LAST`,
+      desc(workflowRuns.workflowRunId),
+    );
+
+  return rows;
+}
+
 export async function insertWorkflowRun(
   draft: WorkflowRunDraft,
 ): Promise<WorkflowRun> {

@@ -6,12 +6,28 @@ export {
   workflowStepTypes,
 } from "./workflow.js";
 export type { SignInRequest, SignInResponse } from "./auth.js";
-export { leadListStages, leadPriorities } from "./leads.js";
+export {
+  leadListStages,
+  leadPipelineStageStatuses,
+  leadPipelineStages,
+  leadPriorities,
+} from "./leads.js";
 export type {
+  LeadContactDetail,
+  LeadDetail,
+  LeadFollowUpDetail,
   LeadListItem,
   LeadListStage,
+  LeadOutreachDetail,
+  LeadPipelineStage,
+  LeadPipelineStageName,
+  LeadPipelineStageStatus,
   LeadPriority,
+  LeadQualificationCriterion,
+  LeadQualificationDetail,
+  LeadSource,
   LeadSummary,
+  LeadSummaryDetail,
   ListLeadListResponse,
   ListLeadsResponse,
 } from "./leads.js";
