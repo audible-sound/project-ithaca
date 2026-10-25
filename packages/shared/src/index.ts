@@ -1,4 +1,5 @@
 export {
+  qualificationFitLabels,
   workflowLeadStatuses,
   workflowRunStatuses,
   workflowStages,
@@ -40,13 +41,20 @@ export type {
 } from "./profiles.js";
 export type {
   AgentStageResult,
+  AgentStageUsage,
   IdentifiedLeadCandidate,
+  LeadStructuredReport,
   LeadWorkflowInput,
   LeadWorkflowResult,
   ListWorkflowRunsResponse,
+  QualificationFitLabel,
   StartWorkflowRunRequest,
   StartWorkflowRunResponse,
+  WorkflowLeadContact,
+  WorkflowLeadContext,
+  WorkflowLeadQualification,
   WorkflowLeadStatus,
+  WorkflowLeadSummary,
   WorkflowRunDetail,
   WorkflowRunLead,
   WorkflowRunStatus,

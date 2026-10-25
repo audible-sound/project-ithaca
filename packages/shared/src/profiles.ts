@@ -1,6 +1,8 @@
 export interface IdealCustomerProfileInput {
   name: string;
   industries?: string[];
+  /** Industries that score as no fit. */
+  industriesExclude?: string[];
   locations?: string[];
   companySizeMin?: number;
   companySizeMax?: number;
@@ -11,7 +13,6 @@ export interface IdealCustomerProfileInput {
 
 export interface CreateIdealCustomerProfileRequest extends IdealCustomerProfileInput {
   isActive?: boolean;
-  industriesExclude?: string[];
   country?: string;
   region?: string;
   city?: string;

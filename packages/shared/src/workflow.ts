@@ -1,3 +1,4 @@
+import type { LeadPriority, LeadQualificationCriterion } from "./leads.js";
 import type { IdealCustomerProfileInput } from "./profiles.js";
 
 /** Agent execution order is fixed. */
@@ -66,6 +67,74 @@ export interface IdentifiedLeadCandidate {
   rawSnippet?: string;
 }
 
+/** Primary person at the company, when one is known. */
+export interface WorkflowLeadContact {
+  fullName: string;
+  jobTitle?: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
+}
+
+/**
+ * Company and contact passed into qualify and summarize.
+ * Description is the stored write-up, not the raw source page.
+ */
+export interface WorkflowLeadContext {
+  leadId: string;
+  companyName: string;
+  website?: string;
+  industry?: string;
+  location?: string;
+  /** One of `1-10`, `11-50`, `51-200`, `201-1000`, `1000+`. */
+  companySizeBand?: string;
+  description?: string;
+  contact?: WorkflowLeadContact;
+}
+
+export const qualificationFitLabels = [
+  "Strong fit",
+  "Partial fit",
+  "Weak fit",
+] as const;
+export type QualificationFitLabel = (typeof qualificationFitLabels)[number];
+
+/** Suitability score for one lead. `isUserOverride` stays false for agent output. */
+export interface WorkflowLeadQualification {
+  leadId: string;
+  score: number;
+  priorityRank: number;
+  priorityLabel: LeadPriority;
+  fitLabel: QualificationFitLabel;
+  explanation: string;
+  evidence: string[];
+  criteriaBreakdown: LeadQualificationCriterion[];
+  isUserOverride: false;
+}
+
+/** Written report sections stored on the lead summary. */
+export interface LeadStructuredReport {
+  snapshot: string;
+  whyItFits: string;
+  gap: string;
+  nextStep: string;
+}
+
+/** Structured summary for one lead. */
+export interface WorkflowLeadSummary {
+  leadId: string;
+  summaryText: string;
+  structuredReport: LeadStructuredReport;
+}
+
+/** Token use and dollar cost for one model call in a stage. */
+export interface AgentStageUsage {
+  modelName: string;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCost: number;
+}
+
 export interface AgentStageResult {
   stage: Exclude<WorkflowStage, "done">;
   status: "completed" | "failed" | "skipped";
@@ -74,6 +143,12 @@ export interface AgentStageResult {
   candidates?: IdentifiedLeadCandidate[];
   /** Dollar cost reported by the external provider for this stage, when it returns one. */
   estimatedCost?: number;
+  /** Omitted means this stage did not qualify leads. An empty array means qualify had no leads. */
+  qualifications?: WorkflowLeadQualification[];
+  /** Omitted means this stage did not summarize leads. An empty array means summarize had no leads. */
+  summaries?: WorkflowLeadSummary[];
+  /** Present when this stage called a model. */
+  usage?: AgentStageUsage;
   data?: Record<string, unknown>;
 }
 
