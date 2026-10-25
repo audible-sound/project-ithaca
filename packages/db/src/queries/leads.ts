@@ -1,7 +1,13 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
-import type { Lead, SourceReference } from "../schema/leads.js";
-import { companies, contacts, leads, sourceReferences } from "../schema/leads.js";
+import type { CompanySizeBand, Lead, SourceReference } from "../schema/leads.js";
+import {
+  companies,
+  companySizeBands,
+  contacts,
+  leads,
+  sourceReferences,
+} from "../schema/leads.js";
 import { emailDeliveries, outreachDrafts } from "../schema/outreach.js";
 import { leadQualifications, leadSummaries } from "../schema/reviews.js";
 import { users } from "../schema/users.js";
@@ -36,6 +42,9 @@ export type LeadDetailRow = {
   location: string | null;
   companySizeBand: string | null;
   description: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
+  companyLinkedinUrl: string | null;
   ownerName: string | null;
   contactFullName: string | null;
   contactJobTitle: string | null;
@@ -58,6 +67,9 @@ export type IdentifiedLeadDraft = {
   companyName: string;
   website?: string;
   description?: string;
+  industry?: string;
+  location?: string;
+  companySizeBand?: string;
   contactName?: string;
   jobTitle?: string;
   email?: string;
@@ -66,6 +78,33 @@ export type IdentifiedLeadDraft = {
   sourceUrl?: string;
   sourceTitle?: string;
   rawSnippet?: string;
+};
+
+/** One identified company and the latest Exa page saved for it. */
+export type CompanyProfileSource = {
+  companyId: string;
+  website: string | null;
+  industry: string | null;
+  location: string | null;
+  sizeBand: string | null;
+  description: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
+  rawSnippet: unknown;
+};
+
+/** Fields to write onto a company. Only include a key when that column should change. */
+export type CompanyProfileFill = {
+  companyId: string;
+  website?: string;
+  industry?: string;
+  location?: string;
+  sizeBand?: CompanySizeBand;
+  description?: string | null;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
 };
 
 export type InsertIdentifiedLeadResult = {
@@ -81,6 +120,84 @@ export type InsertIdentifiedLeadResult = {
 function trimmedOrAbsent(value: string | undefined): string | undefined {
   const trimmed = value?.trim() ?? "";
   return trimmed === "" ? undefined : trimmed;
+}
+
+function acceptedSizeBand(value: string | undefined): CompanySizeBand | undefined {
+  const trimmed = trimmedOrAbsent(value);
+  if (trimmed === undefined) {
+    return undefined;
+  }
+
+  for (const band of companySizeBands) {
+    if (band === trimmed) {
+      return band;
+    }
+  }
+
+  return undefined;
+}
+
+function uniqueWebsiteKeys(
+  website: string | undefined,
+  sourceUrl: string | undefined,
+): string[] {
+  const keys: string[] = [];
+  for (const value of [website, sourceUrl]) {
+    const key = value?.trim().toLowerCase() ?? "";
+    if (key.length === 0 || keys.includes(key)) {
+      continue;
+    }
+    keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * True when the saved description is still an Exa company page.
+ * @param value - The description currently stored on the company.
+ * @returns Whether a parsed write-up should replace it.
+ */
+function isStoredCompanyPage(value: string): boolean {
+  const text = value.trim();
+  if (text.startsWith("#")) {
+    return true;
+  }
+  if (
+    /##\s+(?:About|Categories|Locations|Company Details|Workforce|Social)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  return /(?:^|\n|\s-\s)\s*(?:[-*]\s+)?(?:Industry|Emails|Homepage|LinkedIn)\s*:/i.test(
+    text,
+  );
+}
+
+/**
+ * Description to store when the current one is empty or still the raw page.
+ * @param current - The description saved today.
+ * @param next - The parsed write-up, when one was found.
+ * @returns The new description, null to clear a raw page, or undefined to leave it.
+ */
+function nextStoredDescription(
+  current: string | null,
+  next: string | undefined,
+): string | null | undefined {
+  const blank = current === null || current.trim() === "";
+  const raw = current !== null && isStoredCompanyPage(current);
+  if (!blank && !raw) {
+    return undefined;
+  }
+  if (next !== undefined) {
+    return current === next ? undefined : next;
+  }
+  if (raw) {
+    return null;
+  }
+
+  return undefined;
 }
 
 /**
@@ -126,6 +243,9 @@ export async function findLeadDetailById(
       location: companies.location,
       companySizeBand: companies.sizeBand,
       description: companies.description,
+      companyEmail: companies.email,
+      companyPhone: companies.phone,
+      companyLinkedinUrl: companies.linkedinUrl,
       ownerName: users.fullName,
       contactFullName: contacts.fullName,
       contactJobTitle: contacts.jobTitle,
@@ -321,9 +441,24 @@ export async function listSourceReferencesByLeadId(
     .orderBy(desc(sourceReferences.retrievedAt), desc(sourceReferences.sourceReferenceId));
 }
 
+type StoredCompanyMatch = {
+  leadId: string;
+  companyId: string;
+  website: string | null;
+  industry: string | null;
+  sizeBand: string | null;
+  location: string | null;
+  description: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
+};
+
 /**
  * Stores one identified company, optional contact, lead, and Exa source.
- * Reuses this user's lead when the trimmed website matches, ignoring case.
+ * Reuses this user's lead when the homepage or the result URL matches the
+ * stored website, ignoring case. Empty company facts are filled on a match.
+ * A description is replaced only when it is still the raw company page.
  * @param input - The signed-in user and the identified lead fields.
  * @returns The lead id, and whether this call wrote a contact row.
  */
@@ -337,6 +472,9 @@ export async function insertIdentifiedLead(
 
   const website = trimmedOrAbsent(input.website);
   const description = trimmedOrAbsent(input.description);
+  const industry = trimmedOrAbsent(input.industry);
+  const location = trimmedOrAbsent(input.location);
+  const sizeBand = acceptedSizeBand(input.companySizeBand);
   const contactName = trimmedOrAbsent(input.contactName);
   const jobTitle = trimmedOrAbsent(input.jobTitle);
   const email = trimmedOrAbsent(input.email);
@@ -345,24 +483,36 @@ export async function insertIdentifiedLead(
   const sourceUrl = trimmedOrAbsent(input.sourceUrl);
   const sourceTitle = trimmedOrAbsent(input.sourceTitle);
   const rawSnippet = trimmedOrAbsent(input.rawSnippet);
-  const websiteKey = website?.toLowerCase();
+  const websiteKeys = uniqueWebsiteKeys(website, sourceUrl);
 
   return requireDb().transaction(async (tx) => {
     const now = new Date();
-    let existing: { leadId: string; companyId: string } | undefined;
+    let existing: StoredCompanyMatch | undefined;
 
-    if (websiteKey !== undefined) {
+    if (websiteKeys.length > 0) {
       const matches = await tx
         .select({
           leadId: leads.leadId,
           companyId: leads.companyId,
+          website: companies.website,
+          industry: companies.industry,
+          sizeBand: companies.sizeBand,
+          location: companies.location,
+          description: companies.description,
+          email: companies.email,
+          phone: companies.phone,
+          linkedinUrl: companies.linkedinUrl,
         })
         .from(leads)
         .innerJoin(companies, eq(leads.companyId, companies.companyId))
         .where(
           and(
             eq(leads.createdByUserId, input.userId),
-            sql`lower(trim(${companies.website})) = ${websiteKey}`,
+            or(
+              ...websiteKeys.map(
+                (key) => sql`lower(trim(${companies.website})) = ${key}`,
+              ),
+            ),
           ),
         )
         .orderBy(desc(leads.createdAt), desc(leads.leadId))
@@ -379,16 +529,68 @@ export async function insertIdentifiedLead(
     if (existing) {
       leadId = existing.leadId;
       companyId = existing.companyId;
+      const descriptionUpdate = nextStoredDescription(
+        existing.description,
+        description,
+      );
+      const patch: {
+        website?: string;
+        industry?: string;
+        sizeBand?: CompanySizeBand;
+        location?: string;
+        description?: string | null;
+        email?: string;
+        phone?: string;
+        linkedinUrl?: string;
+        updatedAt?: Date;
+      } = {};
+      if (
+        (existing.website === null || existing.website.trim() === "") &&
+        website !== undefined
+      ) {
+        patch.website = website;
+      }
+      if (existing.industry === null && industry !== undefined) {
+        patch.industry = industry;
+      }
+      if (existing.sizeBand === null && sizeBand !== undefined) {
+        patch.sizeBand = sizeBand;
+      }
+      if (existing.location === null && location !== undefined) {
+        patch.location = location;
+      }
+      if (descriptionUpdate !== undefined) {
+        patch.description = descriptionUpdate;
+      }
+      if (existing.email === null && email !== undefined) {
+        patch.email = email;
+      }
+      if (existing.phone === null && phone !== undefined) {
+        patch.phone = phone;
+      }
+      if (existing.linkedinUrl === null && linkedinUrl !== undefined) {
+        patch.linkedinUrl = linkedinUrl;
+      }
+      if (Object.keys(patch).length > 0) {
+        patch.updatedAt = now;
+        await tx
+          .update(companies)
+          .set(patch)
+          .where(eq(companies.companyId, companyId));
+      }
     } else {
       const companyRows = await tx
         .insert(companies)
         .values({
           name: companyName,
           website: website ?? null,
-          industry: null,
-          sizeBand: null,
-          location: null,
+          industry: industry ?? null,
+          sizeBand: sizeBand ?? null,
+          location: location ?? null,
           description: description ?? null,
+          email: email ?? null,
+          phone: phone ?? null,
+          linkedinUrl: linkedinUrl ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -465,5 +667,98 @@ export async function insertIdentifiedLead(
     }
 
     return { leadId, storedContact };
+  });
+}
+
+/**
+ * Latest Exa page stored for each company.
+ * @returns One row per company that has an Exa source snippet.
+ */
+export async function listCompanyProfileSources(): Promise<CompanyProfileSource[]> {
+  const rows = await requireDb()
+    .select({
+      companyId: companies.companyId,
+      website: companies.website,
+      industry: companies.industry,
+      location: companies.location,
+      sizeBand: companies.sizeBand,
+      description: companies.description,
+      email: companies.email,
+      phone: companies.phone,
+      linkedinUrl: companies.linkedinUrl,
+      rawSnippet: sourceReferences.rawSnippet,
+    })
+    .from(sourceReferences)
+    .innerJoin(companies, eq(sourceReferences.companyId, companies.companyId))
+    .where(eq(sourceReferences.sourceProvider, "exa"))
+    .orderBy(desc(sourceReferences.retrievedAt), desc(sourceReferences.sourceReferenceId));
+
+  const seen = new Set<string>();
+  const sources: CompanyProfileSource[] = [];
+  for (const row of rows) {
+    if (seen.has(row.companyId)) {
+      continue;
+    }
+    seen.add(row.companyId);
+    sources.push(row);
+  }
+
+  return sources;
+}
+
+/**
+ * Writes company facts that the caller has already decided should change.
+ * @param fills - One patch per company. An empty list does nothing.
+ */
+export async function fillCompanyProfiles(fills: CompanyProfileFill[]): Promise<void> {
+  if (fills.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+  await requireDb().transaction(async (tx) => {
+    for (const fill of fills) {
+      const patch: {
+        website?: string;
+        industry?: string;
+        location?: string;
+        sizeBand?: CompanySizeBand;
+        description?: string | null;
+        email?: string;
+        phone?: string;
+        linkedinUrl?: string;
+        updatedAt: Date;
+      } = { updatedAt: now };
+
+      if (fill.website !== undefined) {
+        patch.website = fill.website;
+      }
+      if (fill.industry !== undefined) {
+        patch.industry = fill.industry;
+      }
+      if (fill.location !== undefined) {
+        patch.location = fill.location;
+      }
+      if (fill.sizeBand !== undefined) {
+        patch.sizeBand = fill.sizeBand;
+      }
+      if (fill.description !== undefined) {
+        patch.description = fill.description;
+      }
+      if (fill.email !== undefined) {
+        patch.email = fill.email;
+      }
+      if (fill.phone !== undefined) {
+        patch.phone = fill.phone;
+      }
+      if (fill.linkedinUrl !== undefined) {
+        patch.linkedinUrl = fill.linkedinUrl;
+      }
+
+      await tx
+        .update(companies)
+        .set(patch)
+        .where(eq(companies.companyId, fill.companyId));
+    }
   });
 }

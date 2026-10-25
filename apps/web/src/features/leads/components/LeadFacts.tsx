@@ -27,9 +27,16 @@ function sourceLabel(source: LeadSource): string {
 type FactRowProps = {
   label: string;
   children: ReactElement | string;
+  preserveLines?: boolean;
 };
 
-function FactRow({ label, children }: FactRowProps): ReactElement {
+const linkSx = {
+  color: "primary.main",
+  textDecoration: "none",
+  "&:hover": { textDecoration: "underline" },
+} as const;
+
+function FactRow({ label, children, preserveLines = false }: FactRowProps): ReactElement {
   return (
     <Stack direction="row" spacing={2}>
       <Typography
@@ -39,7 +46,11 @@ function FactRow({ label, children }: FactRowProps): ReactElement {
       >
         {label}:
       </Typography>
-      <Typography variant="body2" component="div" sx={{ flex: 1 }}>
+      <Typography
+        variant="body2"
+        component="div"
+        sx={{ flex: 1, whiteSpace: preserveLines ? "pre-line" : "normal" }}
+      >
         {children}
       </Typography>
     </Stack>
@@ -53,6 +64,9 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
       ? `${contact.fullName}, ${contact.email}`
       : contact.fullName
     : "—";
+  const phone = contact?.phone ?? lead.companyPhone;
+  const linkedinUrl = contact?.linkedinUrl ?? lead.companyLinkedinUrl;
+  const companyEmail = contact?.email ? null : lead.companyEmail;
 
   return (
     <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: "divider" }}>
@@ -80,7 +94,7 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
                 href={lead.website}
                 target="_blank"
                 rel="noreferrer"
-                sx={{ color: "primary.main", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+                sx={linkSx}
               >
                 {lead.companyName}
               </Typography>
@@ -98,20 +112,30 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
           {contact?.jobTitle ? (
             <FactRow label="Job title">{contact.jobTitle}</FactRow>
           ) : null}
-          {contact?.phone ? (
-            <FactRow label="Phone">{contact.phone}</FactRow>
+          {companyEmail ? (
+            <FactRow label="Email">
+              <Typography
+                variant="body2"
+                component="a"
+                href={`mailto:${companyEmail}`}
+                sx={linkSx}
+              >
+                {companyEmail}
+              </Typography>
+            </FactRow>
           ) : null}
-          {contact?.linkedinUrl ? (
+          {phone ? <FactRow label="Phone">{phone}</FactRow> : null}
+          {linkedinUrl ? (
             <FactRow label="LinkedIn">
               <Typography
                 variant="body2"
                 component="a"
-                href={contact.linkedinUrl}
+                href={linkedinUrl}
                 target="_blank"
                 rel="noreferrer"
-                sx={{ color: "primary.main", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+                sx={linkSx}
               >
-                {contact.linkedinUrl}
+                {linkedinUrl}
               </Typography>
             </FactRow>
           ) : null}
@@ -123,14 +147,16 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
                 href={lead.website}
                 target="_blank"
                 rel="noreferrer"
-                sx={{ color: "primary.main", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+                sx={linkSx}
               >
                 {lead.website}
               </Typography>
             </FactRow>
           ) : null}
           {lead.description ? (
-            <FactRow label="Description">{lead.description}</FactRow>
+            <FactRow label="Description" preserveLines>
+              {lead.description}
+            </FactRow>
           ) : null}
           <FactRow label="Sources">
             {lead.sources.length === 0 ? (
@@ -146,7 +172,7 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
                       href={source.sourceUrl}
                       target="_blank"
                       rel="noreferrer"
-                      sx={{ color: "primary.main", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+                      sx={linkSx}
                     >
                       {sourceLabel(source)}
                     </Typography>

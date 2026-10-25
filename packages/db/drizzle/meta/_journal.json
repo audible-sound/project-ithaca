@@ -8,6 +8,13 @@
       "when": 1792083329591,
       "tag": "0000_chief_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792944882704,
+      "tag": "0001_kind_bruce_banner",
+      "breakpoints": true
     }
   ]
 }

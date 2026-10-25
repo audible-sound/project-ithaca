@@ -6,21 +6,43 @@ import type {
   IdentifiedLeadCandidate,
 } from "@ithaca/shared";
 
+function assignCandidate(
+  candidate: IdentifiedLeadCandidate,
+  key:
+    | "website"
+    | "description"
+    | "industry"
+    | "location"
+    | "companySizeBand"
+    | "email"
+    | "phone"
+    | "linkedinUrl"
+    | "sourceUrl"
+    | "rawSnippet",
+  value: string | undefined,
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  candidate[key] = value;
+}
+
 function toIdentifiedLeadCandidate(
   hit: CompanySearchResult,
 ): IdentifiedLeadCandidate {
   const candidate: IdentifiedLeadCandidate = { companyName: hit.name };
 
-  if (hit.website !== undefined) {
-    candidate.website = hit.website;
-  }
-  if (hit.snippet !== undefined) {
-    candidate.description = hit.snippet;
-    candidate.rawSnippet = hit.snippet;
-  }
-  if (hit.sourceUrl !== undefined) {
-    candidate.sourceUrl = hit.sourceUrl;
-  }
+  assignCandidate(candidate, "website", hit.website);
+  assignCandidate(candidate, "description", hit.description);
+  assignCandidate(candidate, "industry", hit.industry);
+  assignCandidate(candidate, "location", hit.location);
+  assignCandidate(candidate, "companySizeBand", hit.companySizeBand);
+  assignCandidate(candidate, "email", hit.email);
+  assignCandidate(candidate, "phone", hit.phone);
+  assignCandidate(candidate, "linkedinUrl", hit.linkedinUrl);
+  assignCandidate(candidate, "sourceUrl", hit.sourceUrl);
+  assignCandidate(candidate, "rawSnippet", hit.rawText);
 
   return candidate;
 }

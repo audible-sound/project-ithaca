@@ -1,3 +1,5 @@
+import { parseCompanyProfile } from "./parseCompanyProfile.js";
+
 export interface CompanySearchQuery {
   industries?: string[];
   locations?: string[];
@@ -8,8 +10,17 @@ export interface CompanySearchQuery {
 export interface CompanySearchResult {
   name: string;
   website?: string;
-  snippet?: string;
   sourceUrl?: string;
+  /** Readable company write-up. Absent when the page has no entity description or About section. */
+  description?: string;
+  /** Full page text, kept as the source snippet. Not shown as the description. */
+  rawText?: string;
+  industry?: string;
+  location?: string;
+  companySizeBand?: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
 }
 
 export interface CompanySearchResponse {
@@ -77,28 +88,41 @@ function readExaApiKey(): string {
   return key;
 }
 
-function readSnippet(highlights: unknown, text: unknown): string | undefined {
-  if (Array.isArray(highlights)) {
-    for (const highlight of highlights) {
-      if (typeof highlight !== "string") {
-        continue;
-      }
-
-      const trimmed = highlight.trim();
-      if (trimmed.length > 0) {
-        return trimmed;
-      }
-    }
+function readUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
   }
 
-  if (typeof text === "string") {
-    const trimmed = text.trim();
-    if (trimmed.length > 0) {
-      return trimmed;
-    }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function readPageText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
   }
 
-  return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function assignFact(
+  result: CompanySearchResult,
+  key:
+    | "description"
+    | "industry"
+    | "location"
+    | "companySizeBand"
+    | "email"
+    | "phone"
+    | "linkedinUrl",
+  value: string | undefined,
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  result[key] = value;
 }
 
 function mapSearchHit(entry: unknown): CompanySearchResult | undefined {
@@ -117,19 +141,31 @@ function mapSearchHit(entry: unknown): CompanySearchResult | undefined {
   }
 
   const result: CompanySearchResult = { name };
-  const url = entry.url;
-  if (typeof url === "string") {
-    const trimmedUrl = url.trim();
-    if (trimmedUrl.length > 0) {
-      result.website = trimmedUrl;
-      result.sourceUrl = trimmedUrl;
-    }
+  const sourceUrl = readUrl(entry.url);
+  const pageText = readPageText(entry.text);
+  const profile = parseCompanyProfile({
+    ...(pageText === undefined ? {} : { text: pageText }),
+    entities: entry.entities,
+  });
+  const website = profile.homepage ?? sourceUrl;
+
+  if (sourceUrl !== undefined) {
+    result.sourceUrl = sourceUrl;
+  }
+  if (website !== undefined) {
+    result.website = website;
+  }
+  if (pageText !== undefined) {
+    result.rawText = pageText;
   }
 
-  const snippet = readSnippet(entry.highlights, entry.text);
-  if (snippet !== undefined) {
-    result.snippet = snippet;
-  }
+  assignFact(result, "description", profile.description);
+  assignFact(result, "industry", profile.industry);
+  assignFact(result, "location", profile.location);
+  assignFact(result, "companySizeBand", profile.companySizeBand);
+  assignFact(result, "email", profile.email);
+  assignFact(result, "phone", profile.phone);
+  assignFact(result, "linkedinUrl", profile.linkedinUrl);
 
   return result;
 }

@@ -34,6 +34,7 @@ import type {
   WorkflowLeadStatus,
   WorkflowStepType,
 } from "@ithaca/shared";
+import { refreshStoredCompanyProfiles } from "./refreshCompanyProfiles.js";
 
 export type RunLeadWorkflowInput = LeadWorkflowInput & {
   workflowRunId: string;
@@ -65,6 +66,7 @@ type WorkflowPersistence = {
   insertIdentifiedLead: (
     input: IdentifiedLeadDraft & { userId: string },
   ) => Promise<InsertIdentifiedLeadResult>;
+  refreshStoredCompanies: () => Promise<void>;
   insertRunLeads: (
     drafts: WorkflowRunLeadDraft[],
   ) => Promise<WorkflowRunLeadRow[]>;
@@ -91,6 +93,9 @@ const defaultPersistence: WorkflowPersistence = {
     await updateWorkflowRunLeadStatus(workflowRunId, leadId, patch);
   },
   insertIdentifiedLead,
+  async refreshStoredCompanies() {
+    await refreshStoredCompanyProfiles();
+  },
   insertRunLeads: insertWorkflowRunLeads,
   async insertTokenUsage(draft) {
     await insertTokenUsage(draft);
@@ -195,6 +200,9 @@ async function runPersisted(
     const agentStartedAt = new Date();
     let result: AgentStageResult;
     try {
+      if (stepType === "identify") {
+        await persistence.refreshStoredCompanies();
+      }
       if (stepType === "identify" && leads.length > 0) {
         result = {
           stage: "identify",

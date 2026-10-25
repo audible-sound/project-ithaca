@@ -176,6 +176,10 @@ export interface LeadDetail {
   location: string | null;
   companySizeBand: string | null;
   description: string | null;
+  /** Company mailbox. A person's address stays on `contact` when one is known. */
+  companyEmail: string | null;
+  companyPhone: string | null;
+  companyLinkedinUrl: string | null;
   ownerId: string | null;
   ownerName: string | null;
   sourceType: "manual" | "identified";
