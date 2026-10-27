@@ -72,9 +72,15 @@ export type IdentifiedLeadDraft = {
   companySizeBand?: string;
   contactName?: string;
   jobTitle?: string;
+  /** Company mailbox from the company page. */
   email?: string;
   phone?: string;
+  /** Company LinkedIn page. */
   linkedinUrl?: string;
+  /** Work email for the contact. */
+  contactEmail?: string;
+  /** Public profile URL for the contact. */
+  contactLinkedinUrl?: string;
   sourceUrl?: string;
   sourceTitle?: string;
   rawSnippet?: string;
@@ -444,6 +450,7 @@ export async function listSourceReferencesByLeadId(
 type StoredCompanyMatch = {
   leadId: string;
   companyId: string;
+  primaryContactId: string | null;
   website: string | null;
   industry: string | null;
   sizeBand: string | null;
@@ -459,6 +466,9 @@ type StoredCompanyMatch = {
  * Reuses this user's lead when the homepage or the result URL matches the
  * stored website, ignoring case. Empty company facts are filled on a match.
  * A description is replaced only when it is still the raw company page.
+ * The contact email and profile URL stay on the contact. The company mailbox
+ * and company LinkedIn URL stay on the company. An existing primary contact
+ * is left unchanged. A lead with no primary contact gets one when a name is present.
  * @param input - The signed-in user and the identified lead fields.
  * @returns The lead id, and whether this call wrote a contact row.
  */
@@ -480,6 +490,8 @@ export async function insertIdentifiedLead(
   const email = trimmedOrAbsent(input.email);
   const phone = trimmedOrAbsent(input.phone);
   const linkedinUrl = trimmedOrAbsent(input.linkedinUrl);
+  const contactEmail = trimmedOrAbsent(input.contactEmail);
+  const contactLinkedinUrl = trimmedOrAbsent(input.contactLinkedinUrl);
   const sourceUrl = trimmedOrAbsent(input.sourceUrl);
   const sourceTitle = trimmedOrAbsent(input.sourceTitle);
   const rawSnippet = trimmedOrAbsent(input.rawSnippet);
@@ -494,6 +506,7 @@ export async function insertIdentifiedLead(
         .select({
           leadId: leads.leadId,
           companyId: leads.companyId,
+          primaryContactId: leads.primaryContactId,
           website: companies.website,
           industry: companies.industry,
           sizeBand: companies.sizeBand,
@@ -525,6 +538,30 @@ export async function insertIdentifiedLead(
     let companyId: string;
     let contactId: string | null = null;
     let storedContact = false;
+
+    const insertContact = async (forCompanyId: string, fullName: string): Promise<string> => {
+      const contactRows = await tx
+        .insert(contacts)
+        .values({
+          companyId: forCompanyId,
+          fullName,
+          jobTitle: jobTitle ?? null,
+          email: contactEmail ?? null,
+          phone: null,
+          linkedinUrl: contactLinkedinUrl ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      const contact = contactRows[0];
+      if (!contact) {
+        throw new Error("Contact was not created.");
+      }
+
+      storedContact = true;
+      return contact.contactId;
+    };
 
     if (existing) {
       leadId = existing.leadId;
@@ -578,6 +615,13 @@ export async function insertIdentifiedLead(
           .set(patch)
           .where(eq(companies.companyId, companyId));
       }
+      if (existing.primaryContactId === null && contactName !== undefined) {
+        contactId = await insertContact(companyId, contactName);
+        await tx
+          .update(leads)
+          .set({ primaryContactId: contactId, updatedAt: now })
+          .where(eq(leads.leadId, leadId));
+      }
     } else {
       const companyRows = await tx
         .insert(companies)
@@ -604,27 +648,7 @@ export async function insertIdentifiedLead(
       companyId = company.companyId;
 
       if (contactName !== undefined) {
-        const contactRows = await tx
-          .insert(contacts)
-          .values({
-            companyId,
-            fullName: contactName,
-            jobTitle: jobTitle ?? null,
-            email: email ?? null,
-            phone: phone ?? null,
-            linkedinUrl: linkedinUrl ?? null,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning();
-
-        const contact = contactRows[0];
-        if (!contact) {
-          throw new Error("Contact was not created.");
-        }
-
-        contactId = contact.contactId;
-        storedContact = true;
+        contactId = await insertContact(companyId, contactName);
       }
 
       const leadRows = await tx

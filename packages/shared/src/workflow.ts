@@ -59,9 +59,15 @@ export interface IdentifiedLeadCandidate {
   companySizeBand?: string;
   contactName?: string;
   jobTitle?: string;
+  /** Company mailbox from the company page. */
   email?: string;
   phone?: string;
+  /** Company LinkedIn page. */
   linkedinUrl?: string;
+  /** Work email for the contact. Absent when no person matched or enrichment found none. */
+  contactEmail?: string;
+  /** Public profile URL for the contact. */
+  contactLinkedinUrl?: string;
   sourceUrl?: string;
   sourceTitle?: string;
   rawSnippet?: string;
