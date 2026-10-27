@@ -131,6 +131,7 @@ function toWorkflowIcp(profile: IdealCustomerProfile): IdealCustomerProfileInput
   const icp: IdealCustomerProfileInput = {
     name: profile.name,
     industries: profile.industries,
+    industriesExclude: profile.industriesExclude,
     locations: profile.locations,
     businessNeedKeywords: profile.businessNeedKeywords,
   };

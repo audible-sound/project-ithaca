@@ -75,7 +75,7 @@ type WorkflowPersistence = {
 
 const defaultAgents: WorkflowAgents = {
   identify: identifyLeads,
-  qualify: qualifyLeads,
+  qualify: (icp) => qualifyLeads(icp, []),
   summarize: summarizeLeads,
   draft: draftOutreach,
 };
