@@ -243,15 +243,19 @@ function parseEvidence(value: unknown): string[] {
   return evidence;
 }
 
-/** The four labeled parts of a company write-up, when the summary was saved that way. */
+/** Labeled parts of a company write-up, when the summary was saved that way. */
 type StructuredReport = {
   snapshot: string | null;
   whyItFits: string | null;
   gap: string | null;
   nextStep: string | null;
+  company: string | null;
+  contact: string | null;
+  source: string | null;
+  qualification: string | null;
 };
 
-/** Reads those four parts. Accepts either camelCase or snake_case field names. */
+/** Reads the report parts. Accepts either camelCase or snake_case field names. */
 function parseStructuredReport(value: unknown): StructuredReport {
   const record = asRecord(value);
   return {
@@ -259,6 +263,10 @@ function parseStructuredReport(value: unknown): StructuredReport {
     whyItFits: readNamedText(record, ["whyItFits", "why_it_fits"]),
     gap: readNamedText(record, ["gap"]),
     nextStep: readNamedText(record, ["nextStep", "next_step"]),
+    company: readNamedText(record, ["company"]),
+    contact: readNamedText(record, ["contact"]),
+    source: readNamedText(record, ["source"]),
+    qualification: readNamedText(record, ["qualification"]),
   };
 }
 
@@ -508,6 +516,10 @@ export function mapLeadDetail(input: {
           whyItFits: structured.whyItFits,
           gap: structured.gap,
           nextStep: structured.nextStep,
+          company: structured.company,
+          contact: structured.contact,
+          source: structured.source,
+          qualification: structured.qualification,
           isUserOverride: row.summaryIsUserOverride ?? false,
         }
       : null,

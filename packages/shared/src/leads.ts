@@ -161,6 +161,14 @@ export interface LeadSummaryDetail {
   whyItFits: string | null;
   gap: string | null;
   nextStep: string | null;
+  /** Company lines. Null until a report stores them. */
+  company: string | null;
+  /** Contact lines. Null until a report stores them. */
+  contact: string | null;
+  /** Source lines. Null until a report stores them. */
+  source: string | null;
+  /** Qualification lines. Null until a report stores them. */
+  qualification: string | null;
   /** True when a person edited the agent's summary. */
   isUserOverride: boolean;
 }

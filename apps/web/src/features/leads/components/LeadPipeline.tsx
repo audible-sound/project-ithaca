@@ -12,6 +12,7 @@ import { useLeadStore } from "../../../stores/leadStore";
 import { formatDate, formatDateTime } from "../../../utils/date";
 import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
+import { LeadReport } from "./LeadReport";
 import { QualificationOverrideDialog } from "./QualificationOverrideDialog";
 
 type LeadPipelineProps = {
@@ -200,29 +201,7 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                 {entry.stage === "summarize" ? (
                   lead.summary ? (
                     <Stack spacing={0.5}>
-                      {lead.summary.snapshot ||
-                      lead.summary.whyItFits ||
-                      lead.summary.gap ||
-                      lead.summary.nextStep ? (
-                        <>
-                          <Typography variant="body2" color="text.secondary">
-                            Snapshot: {lead.summary.snapshot ?? "—"}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Why it fits: {lead.summary.whyItFits ?? "—"}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Gap: {lead.summary.gap ?? "—"}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Next step: {lead.summary.nextStep ?? "—"}
-                          </Typography>
-                        </>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          {lead.summary.summaryText}
-                        </Typography>
-                      )}
+                      <LeadReport summary={lead.summary} />
                       <Box>
                         <Button size="small" disabled>
                           Edit result

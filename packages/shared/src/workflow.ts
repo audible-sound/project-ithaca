@@ -82,6 +82,13 @@ export interface WorkflowLeadContact {
   linkedinUrl?: string;
 }
 
+/** A page the lead was taken from. */
+export interface WorkflowLeadSource {
+  sourceProvider: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+}
+
 /**
  * Company and contact passed into qualify and summarize.
  * Description is the stored write-up, not the raw source page.
@@ -96,6 +103,10 @@ export interface WorkflowLeadContext {
   companySizeBand?: string;
   description?: string;
   contact?: WorkflowLeadContact;
+  /** `manual` was entered by a user. `identified` was found by the identify agent. */
+  sourceType?: "manual" | "identified";
+  /** Source pages, newest first. Absent when none are stored. */
+  sources?: WorkflowLeadSource[];
 }
 
 export const qualificationFitLabels = [
@@ -140,6 +151,14 @@ export interface LeadStructuredReport {
   whyItFits: string;
   gap: string;
   nextStep: string;
+  /** Company lines. An absent field is `Missing.` */
+  company: string;
+  /** Contact lines. An absent field is `Missing.` */
+  contact: string;
+  /** Source lines. An absent field is `Missing.` */
+  source: string;
+  /** Qualification lines. An absent field is `Missing.` */
+  qualification: string;
 }
 
 /** Structured summary for one lead. */

@@ -3,6 +3,7 @@ import type { JsonModelRequest, JsonModelResponse } from "@ithaca/ai-model";
 import type {
   AgentStageResult,
   IdealCustomerProfileInput,
+  LeadStructuredReport,
   WorkflowLeadContact,
   WorkflowLeadContext,
   WorkflowLeadSummary,
@@ -22,6 +23,8 @@ const summarySystem = [
   "leadId must be the lead id from the prompt.",
   "The agent explanation is how the score was measured, and the user reason is why a person replaced that score.",
   "The report must keep those as separate facts and must not treat the user reason as the agent's measurement.",
+  "If a prompt line says Missing., that fact is absent.",
+  "Do not invent a website, industry, location, size, description, contact, email, phone, LinkedIn, source title, or source URL.",
 ].join(" ");
 
 const summaryResponseSchema = {
@@ -63,9 +66,16 @@ export type SummarizeLeadQualification = {
   userReason: string | null;
 };
 
+const missingFact = "Missing.";
+
 function textOrNone(value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
   return trimmed.length === 0 ? "none" : trimmed;
+}
+
+function present(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length === 0 ? missingFact : trimmed;
 }
 
 function joined(values: readonly string[]): string {
@@ -75,17 +85,108 @@ function joined(values: readonly string[]): string {
   return items.length === 0 ? "none" : items.join(", ");
 }
 
-function contactText(contact: WorkflowLeadContact | undefined): string {
+function contactName(contact: WorkflowLeadContact | undefined): string {
   if (contact === undefined) {
-    return "none";
+    return missingFact;
+  }
+
+  const name = contact.fullName.trim();
+  if (name.length === 0) {
+    return missingFact;
   }
 
   const title = contact.jobTitle?.trim() ?? "";
   if (title.length === 0) {
-    return contact.fullName;
+    return name;
   }
 
-  return `${contact.fullName}, ${title}`;
+  return `${name}, ${title}`;
+}
+
+function sourceLabel(
+  sourceType: WorkflowLeadContext["sourceType"],
+): string {
+  if (sourceType === "manual") {
+    return "Manual";
+  }
+
+  if (sourceType === "identified") {
+    return "Identified";
+  }
+
+  return missingFact;
+}
+
+function companyFacts(lead: WorkflowLeadContext): string {
+  return [
+    `Company: ${lead.companyName}`,
+    `Website: ${present(lead.website)}`,
+    `Industry: ${present(lead.industry)}`,
+    `Location: ${present(lead.location)}`,
+    `Company size band: ${present(lead.companySizeBand)}`,
+    `Description: ${present(lead.description)}`,
+  ].join("\n");
+}
+
+function contactFacts(lead: WorkflowLeadContext): string {
+  return [
+    `Contact: ${contactName(lead.contact)}`,
+    `Email: ${present(lead.contact?.email)}`,
+    `Phone: ${present(lead.contact?.phone)}`,
+    `LinkedIn: ${present(lead.contact?.linkedinUrl)}`,
+  ].join("\n");
+}
+
+function sourceFacts(lead: WorkflowLeadContext): string {
+  const titles: string[] = [];
+  const urls: string[] = [];
+  for (const source of lead.sources ?? []) {
+    const title = source.sourceTitle?.trim() ?? "";
+    const url = source.sourceUrl?.trim() ?? "";
+    if (title.length === 0 && url.length === 0) {
+      continue;
+    }
+
+    titles.push(title.length === 0 ? missingFact : title);
+    urls.push(url.length === 0 ? missingFact : url);
+  }
+
+  return [
+    `Source: ${sourceLabel(lead.sourceType)}`,
+    `Source title: ${titles.length === 0 ? missingFact : titles.join("; ")}`,
+    `Source URL: ${urls.length === 0 ? missingFact : urls.join("; ")}`,
+  ].join("\n");
+}
+
+function qualificationFacts(
+  qualification: SummarizeLeadQualification,
+): string {
+  const evidence = qualification.evidence
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return [
+    `Suitability score: ${qualification.score}`,
+    `Fit: ${present(qualification.fitLabel)}`,
+    `Agent explanation: ${present(qualification.agentExplanation)}`,
+    `User reason: ${present(qualification.userReason ?? undefined)}`,
+    `Evidence: ${evidence.length === 0 ? missingFact : evidence.join(", ")}`,
+  ].join("\n");
+}
+
+function reportFacts(
+  lead: WorkflowLeadContext,
+  qualification: SummarizeLeadQualification,
+): Pick<
+  LeadStructuredReport,
+  "company" | "contact" | "source" | "qualification"
+> {
+  return {
+    company: companyFacts(lead),
+    contact: contactFacts(lead),
+    source: sourceFacts(lead),
+    qualification: qualificationFacts(qualification),
+  };
 }
 
 function summaryPrompt(
@@ -95,15 +196,11 @@ function summaryPrompt(
 ): string {
   return [
     `Lead id: ${lead.leadId}`,
-    `Company: ${lead.companyName}`,
-    `Website: ${textOrNone(lead.website)}`,
-    `Industry: ${textOrNone(lead.industry)}`,
-    `Location: ${textOrNone(lead.location)}`,
-    `Company size band: ${textOrNone(lead.companySizeBand)}`,
-    `Description: ${textOrNone(lead.description)}`,
-    `Contact: ${contactText(lead.contact)}`,
+    companyFacts(lead),
+    contactFacts(lead),
+    sourceFacts(lead),
     `Suitability score: ${qualification.score}`,
-    `Fit: ${qualification.fitLabel}`,
+    `Fit: ${textOrNone(qualification.fitLabel)}`,
     `Agent explanation: ${textOrNone(qualification.agentExplanation)}`,
     `User reason: ${textOrNone(qualification.userReason ?? undefined)}`,
     `Evidence: ${joined(qualification.evidence)}`,
@@ -129,7 +226,12 @@ function readSection(
   return value.trim();
 }
 
-function parseSummary(leadId: string, text: string): WorkflowLeadSummary {
+function parseSummary(
+  lead: WorkflowLeadContext,
+  qualification: SummarizeLeadQualification,
+  text: string,
+): WorkflowLeadSummary {
+  const leadId = lead.leadId;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -153,6 +255,7 @@ function parseSummary(leadId: string, text: string): WorkflowLeadSummary {
       whyItFits: readSection(leadId, parsed, "whyItFits", "why it fits"),
       gap: readSection(leadId, parsed, "gap", "gap"),
       nextStep: readSection(leadId, parsed, "nextStep", "next step"),
+      ...reportFacts(lead, qualification),
     },
   };
 }
@@ -195,7 +298,7 @@ export async function summarizeLeads(
     promptTokens += response.promptTokens;
     completionTokens += response.completionTokens;
     cost += response.estimatedCost;
-    summaries.push(parseSummary(lead.leadId, response.text));
+    summaries.push(parseSummary(lead, qualification, response.text));
   }
 
   return {

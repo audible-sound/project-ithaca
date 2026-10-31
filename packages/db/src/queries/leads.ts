@@ -1,4 +1,8 @@
-import type { WorkflowLeadContact, WorkflowLeadContext } from "@ithaca/shared";
+import type {
+  WorkflowLeadContact,
+  WorkflowLeadContext,
+  WorkflowLeadSource,
+} from "@ithaca/shared";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type { CompanySizeBand, Lead, SourceReference } from "../schema/leads.js";
@@ -242,6 +246,9 @@ function nextStoredDescription(
 
 type LeadContextRow = {
   leadId: string;
+  companyId: string;
+  primaryContactId: string | null;
+  sourceType: string;
   companyName: string;
   website: string | null;
   industry: string | null;
@@ -255,7 +262,19 @@ type LeadContextRow = {
   contactLinkedinUrl: string | null;
 };
 
-function toLeadContext(row: LeadContextRow): WorkflowLeadContext {
+type LeadSourceRow = {
+  leadId: string | null;
+  companyId: string | null;
+  contactId: string | null;
+  sourceProvider: string;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+};
+
+function toLeadContext(
+  row: LeadContextRow,
+  sources: readonly WorkflowLeadSource[],
+): WorkflowLeadContext {
   const companyName = trimmedOrAbsent(row.companyName);
   if (companyName === undefined) {
     throw new Error(`Lead ${row.leadId} has no company name.`);
@@ -316,7 +335,61 @@ function toLeadContext(row: LeadContextRow): WorkflowLeadContext {
     context.contact = contact;
   }
 
+  if (row.sourceType === "manual" || row.sourceType === "identified") {
+    context.sourceType = row.sourceType;
+  }
+
+  if (sources.length > 0) {
+    context.sources = [...sources];
+  }
+
   return context;
+}
+
+/**
+ * Source pages for one lead, newest first.
+ * A page counts when it is stored on the lead, its company, or its contact.
+ * The same URL is kept once.
+ */
+function sourcesForLead(
+  row: LeadContextRow,
+  sourceRows: readonly LeadSourceRow[],
+): WorkflowLeadSource[] {
+  const seen = new Set<string>();
+  const sources: WorkflowLeadSource[] = [];
+  for (const source of sourceRows) {
+    const matchesLead = source.leadId === row.leadId;
+    const matchesCompany = source.companyId === row.companyId;
+    const matchesContact =
+      row.primaryContactId !== null &&
+      source.contactId === row.primaryContactId;
+    if (!matchesLead && !matchesCompany && !matchesContact) {
+      continue;
+    }
+
+    const key = sourceUrlKey(source.sourceUrl);
+    if (key.length > 0) {
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+    }
+
+    const item: WorkflowLeadSource = {
+      sourceProvider: source.sourceProvider,
+    };
+    const title = trimmedOrAbsent(source.sourceTitle ?? undefined);
+    if (title !== undefined) {
+      item.sourceTitle = title;
+    }
+    const url = trimmedOrAbsent(source.sourceUrl ?? undefined);
+    if (url !== undefined) {
+      item.sourceUrl = url;
+    }
+    sources.push(item);
+  }
+
+  return sources;
 }
 
 /**
@@ -433,7 +506,7 @@ export async function listLeadsByIdsForUser(
 }
 
 /**
- * Company and contact fields for qualification, in the order of `leadIds`.
+ * Company, contact, and source fields for qualification and summary, in the order of `leadIds`.
  * @param leadIds - Lead ids from the workflow run.
  * @returns One context per id.
  * @throws When a lead id has no row.
@@ -445,9 +518,13 @@ export async function listLeadContextsByIds(
     return [];
   }
 
-  const rows = await requireDb()
+  const db = requireDb();
+  const rows = await db
     .select({
       leadId: leads.leadId,
+      companyId: leads.companyId,
+      primaryContactId: leads.primaryContactId,
+      sourceType: leads.sourceType,
       companyName: companies.name,
       website: companies.website,
       industry: companies.industry,
@@ -465,6 +542,37 @@ export async function listLeadContextsByIds(
     .leftJoin(contacts, eq(leads.primaryContactId, contacts.contactId))
     .where(inArray(leads.leadId, leadIds));
 
+  const companyIds = [...new Set(rows.map((row) => row.companyId))];
+  const contactIds = rows.flatMap((row) =>
+    row.primaryContactId === null ? [] : [row.primaryContactId],
+  );
+  const sourceMatch = [inArray(sourceReferences.leadId, leadIds)];
+  if (companyIds.length > 0) {
+    sourceMatch.push(inArray(sourceReferences.companyId, companyIds));
+  }
+  if (contactIds.length > 0) {
+    sourceMatch.push(inArray(sourceReferences.contactId, contactIds));
+  }
+
+  const sourceRows =
+    rows.length === 0
+      ? []
+      : await db
+          .select({
+            leadId: sourceReferences.leadId,
+            companyId: sourceReferences.companyId,
+            contactId: sourceReferences.contactId,
+            sourceProvider: sourceReferences.sourceProvider,
+            sourceTitle: sourceReferences.sourceTitle,
+            sourceUrl: sourceReferences.sourceUrl,
+          })
+          .from(sourceReferences)
+          .where(or(...sourceMatch))
+          .orderBy(
+            desc(sourceReferences.retrievedAt),
+            desc(sourceReferences.sourceReferenceId),
+          );
+
   const byId = new Map(rows.map((row) => [row.leadId, row]));
   return leadIds.map((leadId) => {
     const row = byId.get(leadId);
@@ -472,7 +580,7 @@ export async function listLeadContextsByIds(
       throw new Error(`Lead ${leadId} was not found.`);
     }
 
-    return toLeadContext(row);
+    return toLeadContext(row, sourcesForLead(row, sourceRows));
   });
 }
 
