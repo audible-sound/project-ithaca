@@ -17,6 +17,9 @@ export function workflowLabel(value: string): string {
   return labels[value] ?? value;
 }
 
+export const noMatchingCompaniesMessage =
+  "Lead identification completed with no matching companies.";
+
 export function workflowStatusColor(
   status: string,
 ): "success.main" | "error.main" | "warning.main" | "text.secondary" {

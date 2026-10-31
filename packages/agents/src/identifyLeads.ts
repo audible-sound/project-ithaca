@@ -213,6 +213,12 @@ export async function identifyLeads(
     industries: icp.industries,
     locations: icp.locations,
     keywords: icp.businessNeedKeywords,
+    ...(icp.companySizeMin === undefined
+      ? {}
+      : { companySizeMin: icp.companySizeMin }),
+    ...(icp.companySizeMax === undefined
+      ? {}
+      : { companySizeMax: icp.companySizeMax }),
   });
   const clients: CompanyContactClients = {
     searchPeople,

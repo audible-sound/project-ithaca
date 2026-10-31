@@ -13,6 +13,7 @@ import { WorkflowStatusText } from "./WorkflowStatusText";
 type WorkflowLeadTableProps = {
   leads: WorkflowRunLead[];
   summaries: LeadSummary[];
+  emptyMessage?: string;
 };
 
 const headerCellSx = {
@@ -26,12 +27,13 @@ const headerCellSx = {
 export function WorkflowLeadTable({
   leads,
   summaries,
+  emptyMessage = "No leads in this run.",
 }: WorkflowLeadTableProps): ReactElement {
   if (leads.length === 0) {
     return (
       <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
         <Typography variant="body2" color="text.secondary" sx={{ p: 3 }}>
-          No leads in this run.
+          {emptyMessage}
         </Typography>
       </Paper>
     );

@@ -1,3 +1,4 @@
+import type { WorkflowRunDetail } from "@ithaca/shared";
 import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -8,8 +9,13 @@ import { useIcpStore } from "../../stores/icpStore";
 import { WorkflowLeadTable } from "./components/WorkflowLeadTable";
 import { WorkflowStatusText } from "./components/WorkflowStatusText";
 import { WorkflowStepTable } from "./components/WorkflowStepTable";
-import { formatWorkflowTime } from "./workflowLabels";
+import { formatWorkflowTime, noMatchingCompaniesMessage } from "./workflowLabels";
 import { useWorkflowStore } from "../../stores/workflowStore";
+
+function searchReturnedNoCompanies(run: WorkflowRunDetail): boolean {
+  const identify = run.steps.find((step) => step.stepType === "identify");
+  return identify?.status === "completed" && run.leads.length === 0;
+}
 
 export function WorkflowRunPage(): ReactElement {
   const { workflowRunId } = useParams();
@@ -96,6 +102,11 @@ export function WorkflowRunPage(): ReactElement {
             <WorkflowLeadTable
               leads={visibleRun.leads}
               summaries={leads}
+              emptyMessage={
+                searchReturnedNoCompanies(visibleRun)
+                  ? noMatchingCompaniesMessage
+                  : undefined
+              }
             />
           </Stack>
         </>

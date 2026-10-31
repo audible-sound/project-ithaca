@@ -4,6 +4,8 @@ export interface CompanySearchQuery {
   industries?: string[];
   locations?: string[];
   keywords?: string[];
+  companySizeMin?: number;
+  companySizeMax?: number;
   limit?: number;
 }
 
@@ -47,17 +49,51 @@ function clauseValues(values: string[] | undefined): string[] {
   return trimmed;
 }
 
+function finiteBound(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function companySizeClause(
+  minimum: number | undefined,
+  maximum: number | undefined,
+): string | undefined {
+  if (minimum !== undefined && maximum !== undefined) {
+    return `with ${minimum} to ${maximum} employees`;
+  }
+
+  if (minimum !== undefined) {
+    return `with at least ${minimum} employees`;
+  }
+
+  if (maximum !== undefined) {
+    return `with at most ${maximum} employees`;
+  }
+
+  return undefined;
+}
+
 function buildCompanyQuery(query: CompanySearchQuery): string {
   const parts = ["Companies"];
   const industries = clauseValues(query.industries);
   const locations = clauseValues(query.locations);
   const keywords = clauseValues(query.keywords);
+  const companySize = companySizeClause(
+    finiteBound(query.companySizeMin),
+    finiteBound(query.companySizeMax),
+  );
 
   if (industries.length > 0) {
     parts.push(`in ${industries.join(", ")}`);
   }
   if (locations.length > 0) {
     parts.push(`located in ${locations.join(", ")}`);
+  }
+  if (companySize !== undefined) {
+    parts.push(companySize);
   }
   if (keywords.length > 0) {
     parts.push(`needing ${keywords.join(", ")}`);
