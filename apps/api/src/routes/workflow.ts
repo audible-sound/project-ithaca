@@ -41,6 +41,7 @@ import { Router } from "express";
 import { sendFailure, signedInUserId } from "../lib/http.js";
 import { mapProfile } from "../lib/mapProfile.js";
 import { asRecord, isUuid, readText, toIso } from "../lib/parse.js";
+import { profileInactiveMessage } from "../lib/profileInput.js";
 
 export const workflowRouter = Router();
 
@@ -229,6 +230,11 @@ workflowRouter.post("/runs", async (req, res) => {
     const profile = await findIdealCustomerProfileById(icpId, userId);
     if (!profile) {
       res.status(404).json({ message: "Ideal customer profile not found." });
+      return;
+    }
+
+    if (!profile.isActive) {
+      res.status(409).json({ message: profileInactiveMessage });
       return;
     }
 

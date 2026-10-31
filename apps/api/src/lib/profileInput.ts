@@ -2,6 +2,9 @@ const maxCompanySize = 2_147_483_647;
 const currencyCode = /^[A-Za-z]{3}$/;
 
 export const profileCreatedMessage = "Ideal customer profile created.";
+export const profileDeletedMessage = "Ideal customer profile deleted.";
+export const profileInUseMessage = "Ideal customer profile is in use.";
+export const profileInactiveMessage = "Ideal customer profile is inactive.";
 
 export type ProfileCriteria = {
   name: string;

@@ -1,11 +1,14 @@
 import {
+  deleteIdealCustomerProfile,
   findIdealCustomerProfileById,
+  findWorkflowRunByIcpId,
   insertIdealCustomerProfile,
   listIdealCustomerProfilesByUser,
   updateIdealCustomerProfileActive,
 } from "@ithaca/db";
 import type {
   CreateIdealCustomerProfileResponse,
+  DeleteIdealCustomerProfileResponse,
   ListIdealCustomerProfilesResponse,
   UpdateIdealCustomerProfileActiveResponse,
 } from "@ithaca/shared";
@@ -25,6 +28,8 @@ import {
   normalizedBudgetCurrency,
   profileCreatedMessage,
   profileCriteriaError,
+  profileDeletedMessage,
+  profileInUseMessage,
 } from "../lib/profileInput.js";
 
 export const profilesRouter = Router();
@@ -235,6 +240,73 @@ profilesRouter.patch("/:icpId", async (req, res) => {
     };
     res.status(200).json(response);
   } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+const profileNotFound = { message: "Ideal customer profile not found." };
+
+function postgresErrorCode(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("code" in err)) {
+    return undefined;
+  }
+
+  return typeof err.code === "string" ? err.code : undefined;
+}
+
+function isForeignKeyViolation(err: unknown): boolean {
+  if (postgresErrorCode(err) === "23503") {
+    return true;
+  }
+
+  if (typeof err === "object" && err !== null && "cause" in err) {
+    return postgresErrorCode(err.cause) === "23503";
+  }
+
+  return false;
+}
+
+profilesRouter.delete("/:icpId", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const icpId = req.params.icpId;
+  if (!isUuid(icpId)) {
+    res.status(404).json(profileNotFound);
+    return;
+  }
+
+  try {
+    const row = await findIdealCustomerProfileById(icpId, userId);
+    if (!row) {
+      res.status(404).json(profileNotFound);
+      return;
+    }
+
+    const run = await findWorkflowRunByIcpId(icpId);
+    if (run) {
+      res.status(409).json({ message: profileInUseMessage });
+      return;
+    }
+
+    const deleted = await deleteIdealCustomerProfile(icpId, userId);
+    if (!deleted) {
+      res.status(404).json(profileNotFound);
+      return;
+    }
+
+    const response: DeleteIdealCustomerProfileResponse = {
+      message: profileDeletedMessage,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    if (isForeignKeyViolation(err)) {
+      res.status(409).json({ message: profileInUseMessage });
+      return;
+    }
+
     sendFailure(res, err);
   }
 });

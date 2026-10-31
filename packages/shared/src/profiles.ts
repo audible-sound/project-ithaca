@@ -63,3 +63,7 @@ export interface UpdateIdealCustomerProfileActiveRequest {
 export interface UpdateIdealCustomerProfileActiveResponse {
   profile: IdealCustomerProfile;
 }
+
+export interface DeleteIdealCustomerProfileResponse {
+  message: string;
+}

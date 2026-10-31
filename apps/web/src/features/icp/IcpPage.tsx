@@ -12,6 +12,7 @@ export function IcpPage(): ReactElement {
   const listStatus = useIcpStore((state) => state.listStatus);
   const listMessage = useIcpStore((state) => state.listMessage);
   const activeMessage = useIcpStore((state) => state.activeMessage);
+  const deleteMessage = useIcpStore((state) => state.deleteMessage);
   const loadProfiles = useIcpStore((state) => state.loadProfiles);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export function IcpPage(): ReactElement {
         <Alert severity="error">{listMessage}</Alert>
       ) : null}
       {activeMessage ? <Alert severity="error">{activeMessage}</Alert> : null}
+      {deleteMessage ? <Alert severity="error">{deleteMessage}</Alert> : null}
       <IcpTable profiles={profiles} status={listStatus} />
     </Stack>
   );

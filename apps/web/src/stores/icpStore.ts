@@ -1,6 +1,7 @@
 import type {
   CreateIdealCustomerProfileRequest,
   CreateIdealCustomerProfileResponse,
+  DeleteIdealCustomerProfileResponse,
   IdealCustomerProfile,
   ListIdealCustomerProfilesResponse,
   UpdateIdealCustomerProfileActiveResponse,
@@ -39,10 +40,12 @@ type IcpStore = {
   detailMessage: string | null;
   updatingIcpId: string | null;
   activeMessage: string | null;
+  deleteMessage: string | null;
   createProfile: (values: IcpFormValues) => Promise<boolean>;
   loadProfiles: () => Promise<void>;
   loadProfile: (icpId: string) => Promise<void>;
   setProfileActive: (icpId: string, isActive: boolean) => Promise<void>;
+  deleteProfile: (icpId: string) => Promise<boolean>;
 };
 
 const maxCompanySize = 2_147_483_647;
@@ -116,6 +119,7 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
   detailMessage: null,
   updatingIcpId: null,
   activeMessage: null,
+  deleteMessage: null,
   loadProfile: async (icpId) => {
     const token = authToken();
     if (!token) {
@@ -420,6 +424,43 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
           err instanceof Error ? err.message : "Failed to reach API",
         updatingIcpId: null,
       });
+    }
+  },
+  deleteProfile: async (icpId) => {
+    const token = authToken();
+    if (!token) {
+      set({ deleteMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ deleteMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${icpId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJson<Partial<DeleteIdealCustomerProfileResponse>>(
+        res,
+      );
+      if (res.ok) {
+        const detail = get().profile;
+        set({
+          profiles: get().profiles.filter((profile) => profile.icpId !== icpId),
+          profile: detail?.icpId === icpId ? null : detail,
+          deleteMessage: null,
+        });
+        return true;
+      }
+
+      set({ deleteMessage: data.message ?? "Failed to reach API" });
+      return false;
+    } catch (err) {
+      set({
+        deleteMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
     }
   },
 }));

@@ -35,6 +35,7 @@ export type {
 export type {
   CreateIdealCustomerProfileRequest,
   CreateIdealCustomerProfileResponse,
+  DeleteIdealCustomerProfileResponse,
   IdealCustomerProfile,
   IdealCustomerProfileInput,
   ListIdealCustomerProfilesResponse,

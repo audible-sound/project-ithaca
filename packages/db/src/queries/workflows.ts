@@ -91,6 +91,18 @@ export async function findWorkflowRunById(
   return rows[0] ?? null;
 }
 
+export async function findWorkflowRunByIcpId(
+  icpId: string,
+): Promise<WorkflowRun | null> {
+  const rows = await requireDb()
+    .select()
+    .from(workflowRuns)
+    .where(eq(workflowRuns.icpId, icpId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 /**
  * Lists workflow runs by a user's ID.
  * @param userId - The ID of the user who owns the workflow runs.

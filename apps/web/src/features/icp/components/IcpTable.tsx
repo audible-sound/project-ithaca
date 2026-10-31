@@ -1,4 +1,5 @@
 import type { IdealCustomerProfile } from "@ithaca/shared";
+import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
@@ -8,7 +9,7 @@ import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
 import type { RequestStatus } from "../../../stores/api";
 import { useIcpStore } from "../../../stores/icpStore";
@@ -17,6 +18,7 @@ import {
   industriesText,
   locationText,
 } from "../icpLabels";
+import { IcpDeleteDialog } from "./IcpDeleteDialog";
 
 type IcpTableProps = {
   profiles: IdealCustomerProfile[];
@@ -35,6 +37,20 @@ export function IcpTable({
 }: IcpTableProps): ReactElement | null {
   const setProfileActive = useIcpStore((state) => state.setProfileActive);
   const updatingIcpId = useIcpStore((state) => state.updatingIcpId);
+  const deleteProfile = useIcpStore((state) => state.deleteProfile);
+  const [pending, setPending] = useState<IdealCustomerProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function onConfirmDelete(): Promise<void> {
+    if (!pending) {
+      return;
+    }
+
+    setDeleting(true);
+    await deleteProfile(pending.icpId);
+    setDeleting(false);
+    setPending(null);
+  }
 
   if (status === "error" && profiles.length === 0) {
     return null;
@@ -65,6 +81,7 @@ export function IcpTable({
               <TableCell>Location</TableCell>
               <TableCell>Company size</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -117,11 +134,35 @@ export function IcpTable({
                     </Typography>
                   </Stack>
                 </TableCell>
+                <TableCell>
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      setPending(profile);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+      {pending ? (
+        <IcpDeleteDialog
+          open
+          name={pending.name}
+          deleting={deleting}
+          onCancel={() => {
+            setPending(null);
+          }}
+          onConfirm={() => {
+            void onConfirmDelete();
+          }}
+        />
+      ) : null}
     </Paper>
   );
 }

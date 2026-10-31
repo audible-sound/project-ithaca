@@ -170,3 +170,20 @@ export async function updateIdealCustomerProfileActive(
 
   return rows[0] ?? null;
 }
+
+export async function deleteIdealCustomerProfile(
+  icpId: string,
+  userId: string,
+): Promise<IdealCustomerProfile | null> {
+  const rows = await requireDb()
+    .delete(idealCustomerProfiles)
+    .where(
+      and(
+        eq(idealCustomerProfiles.icpId, icpId),
+        eq(idealCustomerProfiles.userId, userId),
+      ),
+    )
+    .returning();
+
+  return rows[0] ?? null;
+}
