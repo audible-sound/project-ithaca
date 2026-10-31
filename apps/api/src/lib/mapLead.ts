@@ -378,7 +378,7 @@ export function mapLead(row: LeadListRow): LeadSummary {
   };
 }
 
-/** One row on the Leads page: owner, score, stage, and whether a reply is overdue. */
+/** One row on the Leads page: owner, profiles, score, stage, and whether a reply is overdue. */
 export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
   let score: number | null = null;
   if (row.score !== null) {
@@ -399,6 +399,7 @@ export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
     priority: leadPriority(row.priorityLabel),
     stage: leadListStageFrom(row.lifecycleStatus, row.latestStage),
     followUpDue: isFollowUpDue(row.lifecycleStatus, row.followUpDueAt),
+    icps: row.icps,
   };
 }
 

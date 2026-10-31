@@ -57,16 +57,40 @@ function FactRow({ label, children, preserveLines = false }: FactRowProps): Reac
   );
 }
 
+function ExternalLink({ href, children }: { href: string; children: string }): ReactElement {
+  return (
+    <Typography
+      variant="body2"
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      sx={linkSx}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+function MailLink({ email }: { email: string }): ReactElement {
+  return (
+    <Typography variant="body2" component="a" href={`mailto:${email}`} sx={linkSx}>
+      {email}
+    </Typography>
+  );
+}
+
+function FactGroup({ title, children }: { title: string; children: ReactElement }): ReactElement {
+  return (
+    <Stack spacing={1.5}>
+      <Typography variant="h6">{title}</Typography>
+      {children}
+    </Stack>
+  );
+}
+
 export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
   const contact = lead.contact;
-  const contactLine = contact
-    ? contact.email
-      ? `${contact.fullName}, ${contact.email}`
-      : contact.fullName
-    : "—";
-  const phone = contact?.phone ?? lead.companyPhone;
-  const linkedinUrl = contact?.linkedinUrl ?? lead.companyLinkedinUrl;
-  const companyEmail = contact?.email ? null : lead.companyEmail;
 
   return (
     <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: "divider" }}>
@@ -85,107 +109,85 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
             </Button>
           </Box>
         </Stack>
-        <Stack spacing={1.5}>
-          <FactRow label="Company">
+        <FactGroup title="Company">
+          <Stack spacing={1.5}>
+            <FactRow label="Company">{lead.companyName}</FactRow>
             {lead.website ? (
-              <Typography
-                variant="body2"
-                component="a"
-                href={lead.website}
-                target="_blank"
-                rel="noreferrer"
-                sx={linkSx}
-              >
-                {lead.companyName}
-              </Typography>
-            ) : (
-              lead.companyName
-            )}
-          </FactRow>
-          <FactRow label="Owner">{lead.ownerName ?? "—"}</FactRow>
-          <FactRow label="Industry">{lead.industry ?? "—"}</FactRow>
-          <FactRow label="Location">{lead.location ?? "—"}</FactRow>
-          <FactRow label="Company size">
-            {lead.companySizeBand ? `${lead.companySizeBand} employees` : "—"}
-          </FactRow>
-          <FactRow label="Contact">{contactLine}</FactRow>
-          {contact?.jobTitle ? (
-            <FactRow label="Job title">{contact.jobTitle}</FactRow>
-          ) : null}
-          {companyEmail ? (
-            <FactRow label="Email">
-              <Typography
-                variant="body2"
-                component="a"
-                href={`mailto:${companyEmail}`}
-                sx={linkSx}
-              >
-                {companyEmail}
-              </Typography>
+              <FactRow label="Website">
+                <ExternalLink href={lead.website}>{lead.website}</ExternalLink>
+              </FactRow>
+            ) : null}
+            {lead.companyEmail ? (
+              <FactRow label="Email">
+                <MailLink email={lead.companyEmail} />
+              </FactRow>
+            ) : null}
+            {lead.companyPhone ? <FactRow label="Phone">{lead.companyPhone}</FactRow> : null}
+            {lead.companyLinkedinUrl ? (
+              <FactRow label="LinkedIn">
+                <ExternalLink href={lead.companyLinkedinUrl}>
+                  {lead.companyLinkedinUrl}
+                </ExternalLink>
+              </FactRow>
+            ) : null}
+            <FactRow label="Owner">{lead.ownerName ?? "—"}</FactRow>
+            <FactRow label="Industry">{lead.industry ?? "—"}</FactRow>
+            <FactRow label="Location">{lead.location ?? "—"}</FactRow>
+            <FactRow label="Company size">
+              {lead.companySizeBand ? `${lead.companySizeBand} employees` : "—"}
             </FactRow>
-          ) : null}
-          {phone ? <FactRow label="Phone">{phone}</FactRow> : null}
-          {linkedinUrl ? (
-            <FactRow label="LinkedIn">
-              <Typography
-                variant="body2"
-                component="a"
-                href={linkedinUrl}
-                target="_blank"
-                rel="noreferrer"
-                sx={linkSx}
-              >
-                {linkedinUrl}
-              </Typography>
+            {lead.description ? (
+              <FactRow label="Description" preserveLines>
+                {lead.description}
+              </FactRow>
+            ) : null}
+            <FactRow label="Sources">
+              {lead.sources.length === 0 ? (
+                "—"
+              ) : (
+                <Stack spacing={0.5}>
+                  {lead.sources.map((source, index) =>
+                    source.sourceUrl ? (
+                      <ExternalLink
+                        key={`${source.sourceUrl}-${index}`}
+                        href={source.sourceUrl}
+                      >
+                        {sourceLabel(source)}
+                      </ExternalLink>
+                    ) : (
+                      <Typography key={`source-${index}`} variant="body2">
+                        {sourceLabel(source)}
+                      </Typography>
+                    ),
+                  )}
+                </Stack>
+              )}
             </FactRow>
-          ) : null}
-          {lead.website ? (
-            <FactRow label="Website">
-              <Typography
-                variant="body2"
-                component="a"
-                href={lead.website}
-                target="_blank"
-                rel="noreferrer"
-                sx={linkSx}
-              >
-                {lead.website}
-              </Typography>
-            </FactRow>
-          ) : null}
-          {lead.description ? (
-            <FactRow label="Description" preserveLines>
-              {lead.description}
-            </FactRow>
-          ) : null}
-          <FactRow label="Sources">
-            {lead.sources.length === 0 ? (
-              "—"
-            ) : (
-              <Stack spacing={0.5}>
-                {lead.sources.map((source, index) =>
-                  source.sourceUrl ? (
-                    <Typography
-                      key={`${source.sourceUrl}-${index}`}
-                      variant="body2"
-                      component="a"
-                      href={source.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      sx={linkSx}
-                    >
-                      {sourceLabel(source)}
-                    </Typography>
-                  ) : (
-                    <Typography key={`source-${index}`} variant="body2">
-                      {sourceLabel(source)}
-                    </Typography>
-                  ),
-                )}
-              </Stack>
-            )}
-          </FactRow>
-        </Stack>
+          </Stack>
+        </FactGroup>
+        <FactGroup title="Contact">
+          {contact ? (
+            <Stack spacing={1.5}>
+              <FactRow label="Name">{contact.fullName}</FactRow>
+              {contact.jobTitle ? (
+                <FactRow label="Job title">{contact.jobTitle}</FactRow>
+              ) : null}
+              {contact.email ? (
+                <FactRow label="Email">
+                  <MailLink email={contact.email} />
+                </FactRow>
+              ) : null}
+              {contact.phone ? <FactRow label="Phone">{contact.phone}</FactRow> : null}
+              {contact.linkedinUrl ? (
+                <FactRow label="LinkedIn">
+                  <ExternalLink href={contact.linkedinUrl}>{contact.linkedinUrl}</ExternalLink>
+                </FactRow>
+              ) : null}
+            </Stack>
+          ) : (
+            <Typography variant="body2">—</Typography>
+          )}
+        </FactGroup>
       </Stack>
     </Paper>
   );

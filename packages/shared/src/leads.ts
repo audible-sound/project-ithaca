@@ -35,6 +35,12 @@ export type LeadListStage = (typeof leadListStages)[number];
 export const leadPriorities = ["high", "medium", "low"] as const;
 export type LeadPriority = (typeof leadPriorities)[number];
 
+/** Ideal customer profile linked to a lead through a workflow run. */
+export interface LeadListIcp {
+  icpId: string;
+  name: string;
+}
+
 /** One row on the Leads page (`GET /leads/all`). */
 export interface LeadListItem {
   leadId: string;
@@ -51,6 +57,11 @@ export interface LeadListItem {
   stage: LeadListStage;
   /** True when a reply is overdue or the lead is marked as needing follow-up. */
   followUpDue: boolean;
+  /**
+   * Profiles from workflow runs that included this lead.
+   * Empty when the lead has never been in a run. Each profile appears once.
+   */
+  icps: LeadListIcp[];
 }
 
 /** Body of `GET /leads/all`. */

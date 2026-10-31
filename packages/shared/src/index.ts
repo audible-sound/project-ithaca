@@ -17,6 +17,7 @@ export type {
   LeadContactDetail,
   LeadDetail,
   LeadFollowUpDetail,
+  LeadListIcp,
   LeadListItem,
   LeadListStage,
   LeadOutreachDetail,

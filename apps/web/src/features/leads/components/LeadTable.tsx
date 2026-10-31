@@ -22,12 +22,21 @@ import { leadStageLabel } from "../leadLabels";
 type LeadTableProps = {
   leads: LeadListItem[];
   status: RequestStatus;
+  emptyLabel: string;
 };
 
 type ScoreDirection = "asc" | "desc";
 
 function sourceLabel(lead: LeadListItem): string {
   return lead.sourceType === "manual" ? "Manual" : "Website";
+}
+
+function icpLabel(lead: LeadListItem): string {
+  if (lead.icps.length === 0) {
+    return "—";
+  }
+
+  return lead.icps.map((icp) => icp.name).join(", ");
 }
 
 function priorityLabel(lead: LeadListItem): string {
@@ -59,7 +68,11 @@ function sortedLeads(
   });
 }
 
-export function LeadTable({ leads, status }: LeadTableProps): ReactElement | null {
+export function LeadTable({
+  leads,
+  status,
+  emptyLabel,
+}: LeadTableProps): ReactElement | null {
   const [scoreDirection, setScoreDirection] = useState<ScoreDirection>("desc");
   const listKey = leads
     .map((lead) => lead.leadId)
@@ -82,7 +95,7 @@ export function LeadTable({ leads, status }: LeadTableProps): ReactElement | nul
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
       {showEmpty ? (
         <Typography variant="body2" color="text.secondary" sx={{ p: 3 }}>
-          No leads yet.
+          {emptyLabel}
         </Typography>
       ) : (
         <>
@@ -99,6 +112,7 @@ export function LeadTable({ leads, status }: LeadTableProps): ReactElement | nul
               >
                 <TableCell>Company</TableCell>
                 <TableCell>Owner</TableCell>
+                <TableCell>ICP</TableCell>
                 <TableCell>Contact</TableCell>
                 <TableCell>Source</TableCell>
                 <TableCell>
@@ -146,6 +160,7 @@ export function LeadTable({ leads, status }: LeadTableProps): ReactElement | nul
                     </Typography>
                   </TableCell>
                   <TableCell>{lead.ownerName ?? "—"}</TableCell>
+                  <TableCell>{icpLabel(lead)}</TableCell>
                   <TableCell>{lead.contactName ?? "—"}</TableCell>
                   <TableCell>{sourceLabel(lead)}</TableCell>
                   <TableCell>{lead.score ?? "—"}</TableCell>

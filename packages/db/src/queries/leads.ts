@@ -10,12 +10,18 @@ import {
   sourceReferences,
 } from "../schema/leads.js";
 import { emailDeliveries, outreachDrafts } from "../schema/outreach.js";
+import { idealCustomerProfiles } from "../schema/profiles.js";
 import { leadQualifications, leadSummaries } from "../schema/reviews.js";
 import { users } from "../schema/users.js";
 import { workflowRunLeads, workflowRuns } from "../schema/workflows.js";
 
 export type LeadListRow = Lead & {
   companyName: string;
+};
+
+export type LeadListDetailIcp = {
+  icpId: string;
+  name: string;
 };
 
 export type LeadListDetailRow = Lead & {
@@ -26,6 +32,7 @@ export type LeadListDetailRow = Lead & {
   priorityLabel: string | null;
   latestStage: string | null;
   followUpDueAt: Date | null;
+  icps: LeadListDetailIcp[];
 };
 
 export type LeadDetailRow = {
@@ -456,7 +463,8 @@ export async function listLeadsByUser(userId: string): Promise<LeadListRow[]> {
 
 /**
  * Lists leads from all owners with company, contact, owner, qualification,
- * latest workflow stage, and earliest follow-up due date, ranked by score.
+ * latest workflow stage, ideal customer profiles from workflow runs, and
+ * earliest follow-up due date, ranked by score.
  * @returns One row per lead, highest score first and unscored leads last.
  */
 export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
@@ -544,10 +552,48 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
     }
   }
 
+  const icpRows = await db
+    .select({
+      leadId: workflowRunLeads.leadId,
+      icpId: workflowRuns.icpId,
+      name: idealCustomerProfiles.name,
+    })
+    .from(workflowRunLeads)
+    .innerJoin(
+      workflowRuns,
+      eq(workflowRunLeads.workflowRunId, workflowRuns.workflowRunId),
+    )
+    .innerJoin(
+      idealCustomerProfiles,
+      eq(workflowRuns.icpId, idealCustomerProfiles.icpId),
+    )
+    .where(inArray(workflowRunLeads.leadId, leadIds));
+
+  const icpsByLeadId = new Map<string, LeadListDetailIcp[]>();
+  for (const row of icpRows) {
+    const list = icpsByLeadId.get(row.leadId) ?? [];
+    if (!list.some((icp) => icp.icpId === row.icpId)) {
+      list.push({ icpId: row.icpId, name: row.name });
+      icpsByLeadId.set(row.leadId, list);
+    }
+  }
+
+  for (const list of icpsByLeadId.values()) {
+    list.sort((a, b) => {
+      const byName = a.name.localeCompare(b.name);
+      if (byName !== 0) {
+        return byName;
+      }
+
+      return a.icpId.localeCompare(b.icpId);
+    });
+  }
+
   return rows.map((row) => ({
     ...row,
     latestStage: latestStageByLeadId.get(row.leadId) ?? null,
     followUpDueAt: followUpDueAtByLeadId.get(row.leadId) ?? null,
+    icps: icpsByLeadId.get(row.leadId) ?? [],
   }));
 }
 
