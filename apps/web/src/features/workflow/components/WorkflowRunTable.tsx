@@ -9,6 +9,11 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
 import { Link } from "react-router";
+import {
+  TablePaginationBar,
+  tablePageSize,
+  useTablePage,
+} from "../../../components/TablePaginationBar";
 import type { RequestStatus } from "../../../stores/api";
 import { formatWorkflowTime } from "../workflowLabels";
 import { WorkflowStatusText } from "./WorkflowStatusText";
@@ -39,11 +44,21 @@ export function WorkflowRunTable({
   profiles,
   status,
 }: WorkflowRunTableProps): ReactElement | null {
+  const listKey = runs
+    .map((run) => run.workflowRunId)
+    .sort()
+    .join(",");
+  const { page, setPage } = useTablePage(listKey, runs.length);
+
   if (status === "error" && runs.length === 0) {
     return null;
   }
 
   const showEmpty = status === "ready" && runs.length === 0;
+  const pageRuns = runs.slice(
+    page * tablePageSize,
+    page * tablePageSize + tablePageSize,
+  );
 
   return (
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
@@ -52,37 +67,46 @@ export function WorkflowRunTable({
           No workflow runs yet.
         </Typography>
       ) : (
-        <Table>
-          <TableHead>
-            <TableRow sx={headerCellSx}>
-              <TableCell>Started</TableCell>
-              <TableCell>Profile</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {runs.map((run) => (
-              <TableRow key={run.workflowRunId}>
-                <TableCell>{formatWorkflowTime(run.startedAt)}</TableCell>
-                <TableCell>{profileName(run.icpId, profiles)}</TableCell>
-                <TableCell>
-                  <WorkflowStatusText status={run.status} />
-                </TableCell>
-                <TableCell>
-                  <Button
-                    component={Link}
-                    to={`/workflow/${run.workflowRunId}`}
-                    variant="text"
-                    size="small"
-                  >
-                    Open
-                  </Button>
-                </TableCell>
+        <>
+          <Table>
+            <TableHead>
+              <TableRow sx={headerCellSx}>
+                <TableCell>Started</TableCell>
+                <TableCell>Profile</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {pageRuns.map((run) => (
+                <TableRow key={run.workflowRunId}>
+                  <TableCell>{formatWorkflowTime(run.startedAt)}</TableCell>
+                  <TableCell>{profileName(run.icpId, profiles)}</TableCell>
+                  <TableCell>
+                    <WorkflowStatusText status={run.status} />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      component={Link}
+                      to={`/workflow/${run.workflowRunId}`}
+                      variant="text"
+                      size="small"
+                    >
+                      Open
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {runs.length > 0 ? (
+            <TablePaginationBar
+              count={runs.length}
+              page={page}
+              onPageChange={setPage}
+            />
+          ) : null}
+        </>
       )}
     </Paper>
   );

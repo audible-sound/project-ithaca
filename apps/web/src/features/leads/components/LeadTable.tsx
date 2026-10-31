@@ -10,6 +10,11 @@ import TableSortLabel from "@mui/material/TableSortLabel";
 import Typography from "@mui/material/Typography";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
+import {
+  TablePaginationBar,
+  tablePageSize,
+  useTablePage,
+} from "../../../components/TablePaginationBar";
 import type { RequestStatus } from "../../../stores/api";
 import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
@@ -56,6 +61,11 @@ function sortedLeads(
 
 export function LeadTable({ leads, status }: LeadTableProps): ReactElement | null {
   const [scoreDirection, setScoreDirection] = useState<ScoreDirection>("desc");
+  const listKey = leads
+    .map((lead) => lead.leadId)
+    .sort()
+    .join(",");
+  const { page, setPage } = useTablePage(listKey, leads.length);
 
   if (status === "error" && leads.length === 0) {
     return null;
@@ -63,6 +73,10 @@ export function LeadTable({ leads, status }: LeadTableProps): ReactElement | nul
 
   const showEmpty = status === "ready" && leads.length === 0;
   const rows = sortedLeads(leads, scoreDirection);
+  const pageRows = rows.slice(
+    page * tablePageSize,
+    page * tablePageSize + tablePageSize,
+  );
 
   return (
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
@@ -71,95 +85,105 @@ export function LeadTable({ leads, status }: LeadTableProps): ReactElement | nul
           No leads yet.
         </Typography>
       ) : (
-        <Table>
-          <TableHead>
-            <TableRow
-              sx={{
-                bgcolor: "secondary.main",
-                "& .MuiTableCell-root": {
-                  color: "background.paper",
-                  fontWeight: 500,
-                },
-              }}
-            >
-              <TableCell>Company</TableCell>
-              <TableCell>Owner</TableCell>
-              <TableCell>Contact</TableCell>
-              <TableCell>Source</TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active
-                  direction={scoreDirection}
-                  onClick={() => {
-                    setScoreDirection((current) =>
-                      current === "desc" ? "asc" : "desc",
-                    );
-                  }}
-                  sx={{
+        <>
+          <Table>
+            <TableHead>
+              <TableRow
+                sx={{
+                  bgcolor: "secondary.main",
+                  "& .MuiTableCell-root": {
                     color: "background.paper",
-                    "&.Mui-active": { color: "background.paper" },
-                    "& .MuiTableSortLabel-icon": {
-                      color: "background.paper !important",
-                    },
-                  }}
-                >
-                  Score
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Stage</TableCell>
-              <TableCell>Follow-up</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((lead) => (
-              <TableRow key={lead.leadId} hover>
+                    fontWeight: 500,
+                  },
+                }}
+              >
+                <TableCell>Company</TableCell>
+                <TableCell>Owner</TableCell>
+                <TableCell>Contact</TableCell>
+                <TableCell>Source</TableCell>
                 <TableCell>
-                  <Typography
-                    variant="body2"
-                    component={Link}
-                    to={`/leads/${lead.leadId}`}
+                  <TableSortLabel
+                    active
+                    direction={scoreDirection}
+                    onClick={() => {
+                      setScoreDirection((current) =>
+                        current === "desc" ? "asc" : "desc",
+                      );
+                      setPage(0);
+                    }}
                     sx={{
-                      color: "primary.main",
-                      textDecoration: "none",
-                      "&:hover": { textDecoration: "underline" },
+                      color: "background.paper",
+                      "&.Mui-active": { color: "background.paper" },
+                      "& .MuiTableSortLabel-icon": {
+                        color: "background.paper !important",
+                      },
                     }}
                   >
-                    {lead.companyName}
-                  </Typography>
+                    Score
+                  </TableSortLabel>
                 </TableCell>
-                <TableCell>{lead.ownerName ?? "—"}</TableCell>
-                <TableCell>{lead.contactName ?? "—"}</TableCell>
-                <TableCell>{sourceLabel(lead)}</TableCell>
-                <TableCell>{lead.score ?? "—"}</TableCell>
-                <TableCell>{priorityLabel(lead)}</TableCell>
-                <TableCell>{leadStageLabel(lead.stage)}</TableCell>
-                <TableCell>
-                  {lead.followUpDue ? (
+                <TableCell>Priority</TableCell>
+                <TableCell>Stage</TableCell>
+                <TableCell>Follow-up</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pageRows.map((lead) => (
+                <TableRow key={lead.leadId} hover>
+                  <TableCell>
                     <Typography
                       variant="body2"
-                      component="span"
-                      sx={{ color: "warning.main" }}
+                      component={Link}
+                      to={`/leads/${lead.leadId}`}
+                      sx={{
+                        color: "primary.main",
+                        textDecoration: "none",
+                        "&:hover": { textDecoration: "underline" },
+                      }}
                     >
-                      Due
+                      {lead.companyName}
                     </Typography>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Button size="small" disabled>
-                    Edit
-                  </Button>
-                  <Button size="small" color="error" disabled>
-                    Delete
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                  </TableCell>
+                  <TableCell>{lead.ownerName ?? "—"}</TableCell>
+                  <TableCell>{lead.contactName ?? "—"}</TableCell>
+                  <TableCell>{sourceLabel(lead)}</TableCell>
+                  <TableCell>{lead.score ?? "—"}</TableCell>
+                  <TableCell>{priorityLabel(lead)}</TableCell>
+                  <TableCell>{leadStageLabel(lead.stage)}</TableCell>
+                  <TableCell>
+                    {lead.followUpDue ? (
+                      <Typography
+                        variant="body2"
+                        component="span"
+                        sx={{ color: "warning.main" }}
+                      >
+                        Due
+                      </Typography>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="small" disabled>
+                      Edit
+                    </Button>
+                    <Button size="small" color="error" disabled>
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {rows.length > 0 ? (
+            <TablePaginationBar
+              count={rows.length}
+              page={page}
+              onPageChange={setPage}
+            />
+          ) : null}
+        </>
       )}
     </Paper>
   );
