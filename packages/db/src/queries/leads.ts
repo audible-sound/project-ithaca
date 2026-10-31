@@ -151,13 +151,17 @@ function acceptedSizeBand(value: string | undefined): CompanySizeBand | undefine
   return undefined;
 }
 
+function sourceUrlKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
 function uniqueWebsiteKeys(
   website: string | undefined,
   sourceUrl: string | undefined,
 ): string[] {
   const keys: string[] = [];
   for (const value of [website, sourceUrl]) {
-    const key = value?.trim().toLowerCase() ?? "";
+    const key = sourceUrlKey(value);
     if (key.length === 0 || keys.includes(key)) {
       continue;
     }
@@ -610,11 +614,28 @@ export async function listSourceReferencesByLeadId(
     conditions.push(eq(sourceReferences.contactId, contactId));
   }
 
-  return requireDb()
+  const rows = await requireDb()
     .select()
     .from(sourceReferences)
     .where(or(...conditions))
     .orderBy(desc(sourceReferences.retrievedAt), desc(sourceReferences.sourceReferenceId));
+
+  const seen = new Set<string>();
+  const sources: SourceReference[] = [];
+  for (const row of rows) {
+    const key = sourceUrlKey(row.sourceUrl);
+    if (key.length === 0) {
+      sources.push(row);
+      continue;
+    }
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    sources.push(row);
+  }
+
+  return sources;
 }
 
 type StoredCompanyMatch = {
@@ -636,6 +657,7 @@ type StoredCompanyMatch = {
  * Reuses this user's lead when the homepage or the result URL matches the
  * stored website, ignoring case. Empty company facts are filled on a match.
  * A description is replaced only when it is still the raw company page.
+ * A source URL already stored for this lead or company is not stored again.
  * The contact email and profile URL stay on the contact. The company mailbox
  * and company LinkedIn URL stay on the company. An existing primary contact
  * is left unchanged. A lead with no primary contact gets one when a name is present.
@@ -840,6 +862,26 @@ export async function insertIdentifiedLead(
       }
 
       leadId = lead.leadId;
+    }
+
+    if (sourceUrl !== undefined) {
+      const storedSources = await tx
+        .select({ sourceReferenceId: sourceReferences.sourceReferenceId })
+        .from(sourceReferences)
+        .where(
+          and(
+            or(
+              eq(sourceReferences.leadId, leadId),
+              eq(sourceReferences.companyId, companyId),
+            ),
+            sql`lower(trim(${sourceReferences.sourceUrl})) = ${sourceUrlKey(sourceUrl)}`,
+          ),
+        )
+        .limit(1);
+
+      if (storedSources[0]) {
+        return { leadId, storedContact };
+      }
     }
 
     const sourceRows = await tx
