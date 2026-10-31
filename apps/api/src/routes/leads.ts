@@ -9,10 +9,12 @@ import {
   listWorkflowRunLeadsByLeadId,
   updateLeadFacts,
   updateLeadQualificationOverride,
+  updateLeadSummaryOverride,
 } from "@ithaca/db";
 import type {
   CreateLeadResponse,
   DeleteLeadResponse,
+  EditLeadSummaryResponse,
   LeadDetail,
   ListLeadListResponse,
   ListLeadsResponse,
@@ -31,6 +33,9 @@ import {
   qualificationOverriddenMessage,
   readManualLead,
   readQualificationOverride,
+  readSummaryEdit,
+  summaryEditedMessage,
+  summaryMissingMessage,
 } from "../lib/leadInput.js";
 import { mapLead, mapLeadDetail, mapLeadListItem } from "../lib/mapLead.js";
 import { asRecord, isUuid } from "../lib/parse.js";
@@ -212,6 +217,51 @@ leadsRouter.put("/:leadId/qualification", async (req, res) => {
 
     const response: OverrideLeadQualificationResponse = {
       message: qualificationOverriddenMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Replace the written summary on a summary owned by the signed-in user.
+leadsRouter.put("/:leadId/summary", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  const edit = readSummaryEdit(asRecord(req.body));
+  if ("message" in edit) {
+    res.status(400).json(edit);
+    return;
+  }
+
+  try {
+    const result = await updateLeadSummaryOverride(leadId, userId, edit);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result === "not_summarized") {
+      res.status(409).json({ message: summaryMissingMessage });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Summary was not edited.");
+    }
+
+    const response: EditLeadSummaryResponse = {
+      message: summaryEditedMessage,
       lead,
     };
     res.status(200).json(response);

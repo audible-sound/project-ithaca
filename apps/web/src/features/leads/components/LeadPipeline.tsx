@@ -1,5 +1,9 @@
 import { leadPipelineStages } from "@ithaca/shared";
-import type { LeadDetail, LeadPipelineStageStatus } from "@ithaca/shared";
+import type {
+  EditLeadSummaryRequest,
+  LeadDetail,
+  LeadPipelineStageStatus,
+} from "@ithaca/shared";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
@@ -14,6 +18,7 @@ import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
 import { LeadReport } from "./LeadReport";
 import { QualificationOverrideDialog } from "./QualificationOverrideDialog";
+import { SummaryEditDialog } from "./SummaryEditDialog";
 
 type LeadPipelineProps = {
   lead: LeadDetail;
@@ -60,10 +65,17 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
     (state) => state.overrideQualification,
   );
   const clearOverride = useLeadStore((state) => state.clearOverride);
+  const summaryMessage = useLeadStore((state) => state.summaryMessage);
+  const editSummary = useLeadStore((state) => state.editSummary);
+  const clearSummaryEdit = useLeadStore((state) => state.clearSummaryEdit);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
   const canOverride =
     lead.ownerId !== null && lead.ownerId === userId && lead.qualification !== null;
+  const canEditSummary =
+    lead.ownerId !== null && lead.ownerId === userId && lead.summary !== null;
   const order = new Map(leadPipelineStages.map((stage, index) => [stage, index]));
   const stages = [...lead.pipeline].sort(
     (a, b) => (order.get(a.stage) ?? 0) - (order.get(b.stage) ?? 0),
@@ -77,6 +89,15 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
     setSavingOverride(false);
     if (saved) {
       setOverrideOpen(false);
+    }
+  }
+
+  async function onSaveSummary(values: EditLeadSummaryRequest): Promise<void> {
+    setSavingSummary(true);
+    const saved = await editSummary(lead.leadId, values);
+    setSavingSummary(false);
+    if (saved) {
+      setSummaryOpen(false);
     }
   }
 
@@ -201,9 +222,21 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                 {entry.stage === "summarize" ? (
                   lead.summary ? (
                     <Stack spacing={0.5}>
+                      {lead.summary.isUserOverride ? (
+                        <Typography variant="body2" color="text.secondary">
+                          Edited
+                        </Typography>
+                      ) : null}
                       <LeadReport summary={lead.summary} />
                       <Box>
-                        <Button size="small" disabled>
+                        <Button
+                          size="small"
+                          disabled={!canEditSummary}
+                          onClick={() => {
+                            clearSummaryEdit();
+                            setSummaryOpen(true);
+                          }}
+                        >
                           Edit result
                         </Button>
                       </Box>
@@ -319,6 +352,26 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
         onClearMessage={clearOverride}
         onSave={(score, reason) => {
           void onSaveOverride(score, reason);
+        }}
+      />
+      <SummaryEditDialog
+        open={summaryOpen}
+        summaryText={lead.summary?.summaryText ?? ""}
+        snapshot={lead.summary?.snapshot ?? null}
+        whyItFits={lead.summary?.whyItFits ?? null}
+        gap={lead.summary?.gap ?? null}
+        nextStep={lead.summary?.nextStep ?? null}
+        saving={savingSummary}
+        message={summaryMessage}
+        onCancel={() => {
+          if (!savingSummary) {
+            clearSummaryEdit();
+            setSummaryOpen(false);
+          }
+        }}
+        onClearMessage={clearSummaryEdit}
+        onSave={(values) => {
+          void onSaveSummary(values);
         }}
       />
     </Paper>

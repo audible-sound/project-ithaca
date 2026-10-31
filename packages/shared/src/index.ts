@@ -18,6 +18,8 @@ export type {
   CreateLeadRequest,
   CreateLeadResponse,
   DeleteLeadResponse,
+  EditLeadSummaryRequest,
+  EditLeadSummaryResponse,
   LeadContactDetail,
   LeadDetail,
   LeadFollowUpDetail,

@@ -284,3 +284,18 @@ export interface OverrideLeadQualificationResponse {
   message: string;
   lead: LeadDetail;
 }
+
+/** Body of `PUT /leads/:leadId/summary`. `snapshot` is the About the company section. */
+export interface EditLeadSummaryRequest {
+  summaryText: string;
+  snapshot: string;
+  whyItFits: string;
+  gap: string;
+  nextStep: string;
+}
+
+/** Body of a successful `PUT /leads/:leadId/summary`. */
+export interface EditLeadSummaryResponse {
+  message: string;
+  lead: LeadDetail;
+}

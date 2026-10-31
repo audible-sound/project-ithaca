@@ -2,6 +2,8 @@ import type {
   CreateLeadRequest,
   CreateLeadResponse,
   DeleteLeadResponse,
+  EditLeadSummaryRequest,
+  EditLeadSummaryResponse,
   LeadDetail,
   LeadListItem,
   ListLeadListResponse,
@@ -167,6 +169,7 @@ type LeadStore = {
   formMessage: string | null;
   deleteMessage: string | null;
   overrideMessage: string | null;
+  summaryMessage: string | null;
   loadLeads: () => Promise<void>;
   loadLead: (leadId: string) => Promise<void>;
   createLead: (values: LeadFormValues) => Promise<string | null>;
@@ -177,8 +180,13 @@ type LeadStore = {
     score: unknown,
     reason: string,
   ) => Promise<boolean>;
+  editSummary: (
+    leadId: string,
+    values: EditLeadSummaryRequest,
+  ) => Promise<boolean>;
   clearForm: () => void;
   clearOverride: () => void;
+  clearSummaryEdit: () => void;
 };
 
 export const useLeadStore = create<LeadStore>()((set, get) => ({
@@ -192,11 +200,15 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
   formMessage: null,
   deleteMessage: null,
   overrideMessage: null,
+  summaryMessage: null,
   clearForm: () => {
     set({ formStatus: "idle", formMessage: null });
   },
   clearOverride: () => {
     set({ overrideMessage: null });
+  },
+  clearSummaryEdit: () => {
+    set({ summaryMessage: null });
   },
   loadLead: async (leadId) => {
     const token = authToken();
@@ -410,6 +422,46 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
     } catch (err) {
       set({
         overrideMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
+    }
+  },
+  editSummary: async (leadId, values) => {
+    const token = authToken();
+    if (!token) {
+      set({ summaryMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ summaryMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/summary`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(values),
+      });
+      const data = await readJson<Partial<EditLeadSummaryResponse>>(res);
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ summaryMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        summaryMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        summaryMessage:
           err instanceof Error ? err.message : "Failed to reach API",
       });
       return false;

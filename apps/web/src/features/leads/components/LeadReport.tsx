@@ -56,7 +56,7 @@ function splitQualification(qualification: string | null): {
 }
 
 type ReportGroupProps = {
-  label: "Retrieved fact" | "AI interpretation";
+  label: "Retrieved fact" | "Interpretation";
   borderColor: "primary.main" | "secondary.main";
   textColor: "text.primary" | "text.secondary";
   lines: string[];
@@ -91,7 +91,7 @@ export function LeadReport({ summary }: LeadReportProps): ReactElement {
   if (!hasStructuredReport(summary)) {
     return (
       <ReportGroup
-        label="AI interpretation"
+        label="Interpretation"
         borderColor="secondary.main"
         textColor="text.primary"
         lines={[summary.summaryText]}
@@ -104,12 +104,12 @@ export function LeadReport({ summary }: LeadReportProps): ReactElement {
   return (
     <Stack spacing={1.5}>
       <ReportGroup
-        label="AI interpretation"
+        label="Interpretation"
         borderColor="secondary.main"
         textColor="text.primary"
         lines={[
           ...qualification.interpretation,
-          `Snapshot: ${summary.snapshot ?? "—"}`,
+          `About the company: ${summary.snapshot ?? "—"}`,
           `Why it fits: ${summary.whyItFits ?? "—"}`,
           `Gap: ${summary.gap ?? "—"}`,
           `Next step: ${summary.nextStep ?? "—"}`,

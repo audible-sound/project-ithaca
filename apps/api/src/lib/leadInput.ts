@@ -16,6 +16,10 @@ export const qualificationScoreMessage =
 export const qualificationMissingMessage =
   "Lead has no qualification to override.";
 export const qualificationReasonMessage = "Override reason must be text.";
+export const summaryEditedMessage = "Summary edited.";
+export const summaryRequiredMessage =
+  "Summary, about the company, why it fits, gap, and next step are required.";
+export const summaryMissingMessage = "Lead has no summary to edit.";
 
 function emailMessage(value: string | null, message: string): string | null {
   if (value === null || emailAddress.test(value)) {
@@ -106,6 +110,66 @@ export function readQualificationOverride(
 
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
   return { score, reason: reason.length > 0 ? reason : null };
+}
+
+export type SummaryEditInput = {
+  summaryText: string;
+  snapshot: string;
+  whyItFits: string;
+  gap: string;
+  nextStep: string;
+};
+
+function requiredSummaryText(
+  body: Record<string, unknown>,
+  field: keyof SummaryEditInput,
+): string | { message: string } {
+  const value = body[field];
+  if (typeof value !== "string") {
+    return { message: summaryRequiredMessage };
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return { message: summaryRequiredMessage };
+  }
+
+  return trimmed;
+}
+
+/**
+ * Reads a summary edit.
+ * Each written section must be non-empty text. About the company is `snapshot`.
+ */
+export function readSummaryEdit(
+  body: Record<string, unknown>,
+): SummaryEditInput | { message: string } {
+  const summaryText = requiredSummaryText(body, "summaryText");
+  if (typeof summaryText !== "string") {
+    return summaryText;
+  }
+
+  const snapshot = requiredSummaryText(body, "snapshot");
+  if (typeof snapshot !== "string") {
+    return snapshot;
+  }
+
+  const whyItFits = requiredSummaryText(body, "whyItFits");
+  if (typeof whyItFits !== "string") {
+    return whyItFits;
+  }
+
+  const gap = requiredSummaryText(body, "gap");
+  if (typeof gap !== "string") {
+    return gap;
+  }
+
+  const nextStep = requiredSummaryText(body, "nextStep");
+  if (typeof nextStep !== "string") {
+    return nextStep;
+  }
+
+  return { summaryText, snapshot, whyItFits, gap, nextStep };
 }
 
 /** Reads and checks a manual lead body. Returns the facts, or the first error. */

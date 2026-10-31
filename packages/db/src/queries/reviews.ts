@@ -233,3 +233,94 @@ export async function updateLeadQualificationOverride(
     return "updated";
   });
 }
+
+export type SummaryOverrideResult = "updated" | "not_found" | "not_summarized";
+
+export type SummaryOverrideDecision = {
+  summaryText: string;
+  /** About the company. Stored on the report as snapshot. */
+  snapshot: string;
+  whyItFits: string;
+  gap: string;
+  nextStep: string;
+};
+
+function reportRecord(value: unknown): Record<string, unknown> {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+
+  return {};
+}
+
+/**
+ * Replaces the written summary for a lead owned by the user.
+ * Company, contact, source, and qualification lines stay as stored.
+ * A later summarise run leaves this row unchanged.
+ * @param leadId - The lead whose summary is edited.
+ * @param userId - The user who must own the lead.
+ * @param decision - The five written sections, already trimmed.
+ * @returns Whether the row was updated, the lead is missing, or it has no summary.
+ */
+export async function updateLeadSummaryOverride(
+  leadId: string,
+  userId: string,
+  decision: SummaryOverrideDecision,
+): Promise<SummaryOverrideResult> {
+  const now = new Date();
+
+  return requireDb().transaction(async (tx) => {
+    const existing = await tx
+      .select({ leadId: leads.leadId })
+      .from(leads)
+      .where(
+        and(
+          eq(leads.leadId, leadId),
+          eq(leads.createdByUserId, userId),
+          isNull(leads.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (existing[0] === undefined) {
+      return "not_found";
+    }
+
+    const current = await tx
+      .select({ structuredReport: leadSummaries.structuredReport })
+      .from(leadSummaries)
+      .where(eq(leadSummaries.leadId, leadId))
+      .limit(1);
+
+    const summary = current[0];
+    if (summary === undefined) {
+      return "not_summarized";
+    }
+
+    const structuredReport = {
+      ...reportRecord(summary.structuredReport),
+      snapshot: decision.snapshot,
+      whyItFits: decision.whyItFits,
+      gap: decision.gap,
+      nextStep: decision.nextStep,
+    };
+
+    const rows = await tx
+      .update(leadSummaries)
+      .set({
+        summaryText: decision.summaryText,
+        structuredReport,
+        isUserOverride: true,
+        reviewedByUserId: userId,
+        updatedAt: now,
+      })
+      .where(eq(leadSummaries.leadId, leadId))
+      .returning({ leadId: leadSummaries.leadId });
+
+    if (rows[0] === undefined) {
+      return "not_summarized";
+    }
+
+    return "updated";
+  });
+}
