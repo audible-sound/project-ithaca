@@ -28,6 +28,7 @@ export function App(): ReactElement {
               <Route path="/leads/:leadId" element={<LeadDetailPage />} />
               <Route path="/icp" element={<IcpPage />} />
               <Route path="/icp/new" element={<IcpFormPage />} />
+              <Route path="/icp/:icpId/edit" element={<IcpFormPage />} />
               <Route path="/icp/:icpId" element={<IcpDetailPage />} />
               <Route path="/workflow" element={<WorkflowPage />} />
               <Route path="/workflow/new" element={<WorkflowFormPage />} />

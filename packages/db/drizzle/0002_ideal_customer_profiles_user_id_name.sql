@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "ideal_customer_profiles_user_id_name" ON "ideal_customer_profiles" USING btree ("user_id",lower("name"));

@@ -41,6 +41,8 @@ export type {
   ListIdealCustomerProfilesResponse,
   UpdateIdealCustomerProfileActiveRequest,
   UpdateIdealCustomerProfileActiveResponse,
+  UpdateIdealCustomerProfileRequest,
+  UpdateIdealCustomerProfileResponse,
 } from "./profiles.js";
 export type {
   AgentStageResult,

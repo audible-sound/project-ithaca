@@ -5,6 +5,8 @@ import type {
   IdealCustomerProfile,
   ListIdealCustomerProfilesResponse,
   UpdateIdealCustomerProfileActiveResponse,
+  UpdateIdealCustomerProfileRequest,
+  UpdateIdealCustomerProfileResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
 import { apiUrl, authToken, readJson } from "./api";
@@ -42,6 +44,7 @@ type IcpStore = {
   activeMessage: string | null;
   deleteMessage: string | null;
   createProfile: (values: IcpFormValues) => Promise<boolean>;
+  updateProfile: (icpId: string, values: IcpFormValues) => Promise<boolean>;
   loadProfiles: () => Promise<void>;
   loadProfile: (icpId: string) => Promise<void>;
   setProfileActive: (icpId: string, isActive: boolean) => Promise<void>;
@@ -99,13 +102,102 @@ function readWholeNumber(value: string): number | undefined | "invalid" {
 }
 
 function withNumber(
-  body: CreateIdealCustomerProfileRequest,
+  body: UpdateIdealCustomerProfileRequest,
   key: "companySizeMin" | "companySizeMax" | "budgetMin" | "budgetMax",
   value: number | undefined,
 ): void {
   if (value !== undefined) {
     body[key] = value;
   }
+}
+
+function profileRequest(
+  values: IcpFormValues,
+): { message: string } | { body: UpdateIdealCustomerProfileRequest } {
+  const name = values.name.trim();
+  if (!name) {
+    return { message: "Name is required." };
+  }
+
+  const companySizeMin = readWholeNumber(values.companySizeMin);
+  const companySizeMax = readWholeNumber(values.companySizeMax);
+  if (companySizeMin === "invalid" || companySizeMax === "invalid") {
+    return { message: "Company size must be a whole number." };
+  }
+
+  if (
+    (companySizeMin !== undefined && companySizeMin > maxCompanySize) ||
+    (companySizeMax !== undefined && companySizeMax > maxCompanySize)
+  ) {
+    return { message: "Company size cannot exceed 2,147,483,647." };
+  }
+
+  if (
+    companySizeMin !== undefined &&
+    companySizeMax !== undefined &&
+    companySizeMin > companySizeMax
+  ) {
+    return { message: "Company size minimum cannot exceed the maximum." };
+  }
+
+  const budgetMin = readWholeNumber(values.budgetMin);
+  const budgetMax = readWholeNumber(values.budgetMax);
+  if (budgetMin === "invalid" || budgetMax === "invalid") {
+    return { message: "Budget must be a whole number." };
+  }
+
+  if (
+    budgetMin !== undefined &&
+    budgetMax !== undefined &&
+    budgetMin > budgetMax
+  ) {
+    return { message: "Budget minimum cannot exceed the maximum." };
+  }
+
+  const industries = splitList(values.industriesInclude);
+  const industriesExclude = splitList(values.industriesExclude);
+  if (industriesOverlap(industries, industriesExclude)) {
+    return { message: "An industry cannot be both included and excluded." };
+  }
+
+  const country = values.country.trim();
+  const region = values.region.trim();
+  const city = values.city.trim();
+  const budgetCurrency = values.budgetCurrency.trim();
+  const budgetNotes = values.budgetNotes.trim();
+  const currencyMessage = budgetCurrencyMessage(
+    budgetCurrency,
+    budgetMin,
+    budgetMax,
+    budgetNotes,
+  );
+  if (currencyMessage) {
+    return { message: currencyMessage };
+  }
+
+  if ((region || city) && !country) {
+    return { message: "Country is required when a region or city is set." };
+  }
+
+  const body: UpdateIdealCustomerProfileRequest = {
+    name,
+    industries,
+    industriesExclude,
+    country,
+    region,
+    city,
+    budgetCurrency: budgetCurrency.toUpperCase(),
+    budgetNotes,
+    businessNeedKeywords: splitList(values.businessNeedKeywords),
+    businessNeedDescription: values.businessNeedDescription.trim(),
+    outreachTone: values.outreachTone.trim(),
+    messageConstraints: values.messageConstraints.trim(),
+  };
+  withNumber(body, "companySizeMin", companySizeMin);
+  withNumber(body, "companySizeMax", companySizeMax);
+  withNumber(body, "budgetMin", budgetMin);
+  withNumber(body, "budgetMax", budgetMax);
+  return { body };
 }
 
 export const useIcpStore = create<IcpStore>()((set, get) => ({
@@ -199,95 +291,9 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
     }
   },
   createProfile: async (values) => {
-    const name = values.name.trim();
-    if (!name) {
-      set({ status: "error", message: "Name is required." });
-      return false;
-    }
-
-    const companySizeMin = readWholeNumber(values.companySizeMin);
-    const companySizeMax = readWholeNumber(values.companySizeMax);
-    if (companySizeMin === "invalid" || companySizeMax === "invalid") {
-      set({
-        status: "error",
-        message: "Company size must be a whole number.",
-      });
-      return false;
-    }
-
-    if (
-      (companySizeMin !== undefined && companySizeMin > maxCompanySize) ||
-      (companySizeMax !== undefined && companySizeMax > maxCompanySize)
-    ) {
-      set({
-        status: "error",
-        message: "Company size cannot exceed 2,147,483,647.",
-      });
-      return false;
-    }
-
-    if (
-      companySizeMin !== undefined &&
-      companySizeMax !== undefined &&
-      companySizeMin > companySizeMax
-    ) {
-      set({
-        status: "error",
-        message: "Company size minimum cannot exceed the maximum.",
-      });
-      return false;
-    }
-
-    const budgetMin = readWholeNumber(values.budgetMin);
-    const budgetMax = readWholeNumber(values.budgetMax);
-    if (budgetMin === "invalid" || budgetMax === "invalid") {
-      set({ status: "error", message: "Budget must be a whole number." });
-      return false;
-    }
-
-    if (
-      budgetMin !== undefined &&
-      budgetMax !== undefined &&
-      budgetMin > budgetMax
-    ) {
-      set({
-        status: "error",
-        message: "Budget minimum cannot exceed the maximum.",
-      });
-      return false;
-    }
-
-    const industries = splitList(values.industriesInclude);
-    const industriesExclude = splitList(values.industriesExclude);
-    if (industriesOverlap(industries, industriesExclude)) {
-      set({
-        status: "error",
-        message: "An industry cannot be both included and excluded.",
-      });
-      return false;
-    }
-
-    const country = values.country.trim();
-    const region = values.region.trim();
-    const city = values.city.trim();
-    const budgetCurrency = values.budgetCurrency.trim();
-    const budgetNotes = values.budgetNotes.trim();
-    const currencyMessage = budgetCurrencyMessage(
-      budgetCurrency,
-      budgetMin,
-      budgetMax,
-      budgetNotes,
-    );
-    if (currencyMessage) {
-      set({ status: "error", message: currencyMessage });
-      return false;
-    }
-
-    if ((region || city) && !country) {
-      set({
-        status: "error",
-        message: "Country is required when a region or city is set.",
-      });
+    const request = profileRequest(values);
+    if ("message" in request) {
+      set({ status: "error", message: request.message });
       return false;
     }
 
@@ -298,24 +304,9 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
     }
 
     const body: CreateIdealCustomerProfileRequest = {
-      name,
-      industries,
-      industriesExclude,
-      country,
-      region,
-      city,
-      budgetCurrency: budgetCurrency.toUpperCase(),
-      budgetNotes,
-      businessNeedKeywords: splitList(values.businessNeedKeywords),
-      businessNeedDescription: values.businessNeedDescription.trim(),
-      outreachTone: values.outreachTone.trim(),
-      messageConstraints: values.messageConstraints.trim(),
+      ...request.body,
       isActive: true,
     };
-    withNumber(body, "companySizeMin", companySizeMin);
-    withNumber(body, "companySizeMax", companySizeMax);
-    withNumber(body, "budgetMin", budgetMin);
-    withNumber(body, "budgetMax", budgetMax);
 
     set({ status: "loading", message: null });
 
@@ -341,6 +332,59 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
       set({
         message: null,
         status: "idle",
+      });
+      return true;
+    } catch (err) {
+      set({
+        message: err instanceof Error ? err.message : "Failed to reach API",
+        status: "error",
+      });
+      return false;
+    }
+  },
+  updateProfile: async (icpId, values) => {
+    const request = profileRequest(values);
+    if ("message" in request) {
+      set({ status: "error", message: request.message });
+      return false;
+    }
+
+    const token = authToken();
+    if (!token) {
+      set({ status: "error", message: "Authentication required." });
+      return false;
+    }
+
+    set({ status: "loading", message: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${icpId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request.body),
+      });
+      const data = await readJson<
+        Partial<UpdateIdealCustomerProfileResponse> & { message?: string }
+      >(res);
+      if (!res.ok || !("profile" in data) || !data.profile) {
+        set({
+          message: data.message ?? "Failed to reach API",
+          status: "error",
+        });
+        return false;
+      }
+
+      const saved = data.profile;
+      set({
+        message: null,
+        status: "idle",
+        profile: saved,
+        profiles: get().profiles.map((profile) =>
+          profile.icpId === icpId ? saved : profile,
+        ),
       });
       return true;
     } catch (err) {

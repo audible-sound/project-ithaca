@@ -56,6 +56,16 @@ export interface ListIdealCustomerProfilesResponse {
   profiles: IdealCustomerProfile[];
 }
 
+export type UpdateIdealCustomerProfileRequest = Omit<
+  CreateIdealCustomerProfileRequest,
+  "isActive"
+>;
+
+export interface UpdateIdealCustomerProfileResponse {
+  message: string;
+  profile: IdealCustomerProfile;
+}
+
 export interface UpdateIdealCustomerProfileActiveRequest {
   isActive: boolean;
 }

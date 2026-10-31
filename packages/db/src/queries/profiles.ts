@@ -25,7 +25,12 @@ export type IdealCustomerProfileDraft = {
   isActive: boolean;
 };
 
-function industriesValue(draft: IdealCustomerProfileDraft): {
+export type IdealCustomerProfileCriteria = Omit<
+  IdealCustomerProfileDraft,
+  "userId" | "isActive"
+>;
+
+function industriesValue(draft: IdealCustomerProfileCriteria): {
   include: string[];
   exclude: string[];
 } {
@@ -35,7 +40,7 @@ function industriesValue(draft: IdealCustomerProfileDraft): {
   };
 }
 
-function locationsValue(draft: IdealCustomerProfileDraft): {
+function locationsValue(draft: IdealCustomerProfileCriteria): {
   countries: string[];
   regions: string[];
   cities: string[];
@@ -55,7 +60,7 @@ function locationsValue(draft: IdealCustomerProfileDraft): {
   };
 }
 
-function budgetValue(draft: IdealCustomerProfileDraft): Record<string, unknown> {
+function budgetValue(draft: IdealCustomerProfileCriteria): Record<string, unknown> {
   if (
     !draft.budgetCurrency &&
     draft.budgetMin === null &&
@@ -74,7 +79,7 @@ function budgetValue(draft: IdealCustomerProfileDraft): Record<string, unknown> 
 }
 
 function businessNeedValue(
-  draft: IdealCustomerProfileDraft,
+  draft: IdealCustomerProfileCriteria,
 ): Record<string, unknown> {
   if (draft.businessNeedKeywords.length === 0 && !draft.businessNeedDescription) {
     return {};
@@ -158,6 +163,37 @@ export async function updateIdealCustomerProfileActive(
     .update(idealCustomerProfiles)
     .set({
       isActive,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(idealCustomerProfiles.icpId, icpId),
+        eq(idealCustomerProfiles.userId, userId),
+      ),
+    )
+    .returning();
+
+  return rows[0] ?? null;
+}
+
+export async function updateIdealCustomerProfile(
+  icpId: string,
+  userId: string,
+  draft: IdealCustomerProfileCriteria,
+): Promise<IdealCustomerProfile | null> {
+  const rows = await requireDb()
+    .update(idealCustomerProfiles)
+    .set({
+      name: draft.name,
+      industries: industriesValue(draft),
+      companySizeMin: draft.companySizeMin,
+      companySizeMax: draft.companySizeMax,
+      locations: locationsValue(draft),
+      budget: budgetValue(draft),
+      businessNeedKeywords: businessNeedValue(draft),
+      outreachTone: draft.outreachTone,
+      messageConstraints: draft.messageConstraints,
+      otherCriteria: {},
       updatedAt: new Date(),
     })
     .where(

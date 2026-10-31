@@ -4,13 +4,16 @@ import {
   findWorkflowRunByIcpId,
   insertIdealCustomerProfile,
   listIdealCustomerProfilesByUser,
+  updateIdealCustomerProfile,
   updateIdealCustomerProfileActive,
+  type IdealCustomerProfileCriteria,
 } from "@ithaca/db";
 import type {
   CreateIdealCustomerProfileResponse,
   DeleteIdealCustomerProfileResponse,
   ListIdealCustomerProfilesResponse,
   UpdateIdealCustomerProfileActiveResponse,
+  UpdateIdealCustomerProfileResponse,
 } from "@ithaca/shared";
 import { Router } from "express";
 import { sendFailure, signedInUserId } from "../lib/http.js";
@@ -30,21 +33,24 @@ import {
   profileCriteriaError,
   profileDeletedMessage,
   profileInUseMessage,
+  profileNameTakenMessage,
+  profileUpdatedMessage,
 } from "../lib/profileInput.js";
 
-export const profilesRouter = Router();
+const profileNotFound = { message: "Ideal customer profile not found." };
 
-profilesRouter.post("/", async (req, res) => {
-  const userId = req.auth?.sub;
-  if (!signedInUserId(res, userId)) {
-    return;
-  }
+function isCriteriaError(
+  value: IdealCustomerProfileCriteria | { message: string },
+): value is { message: string } {
+  return "message" in value;
+}
 
-  const body = asRecord(req.body);
+function readProfileCriteria(
+  body: Record<string, unknown>,
+): IdealCustomerProfileCriteria | { message: string } {
   const name = readText(body.name);
   if (!name) {
-    res.status(400).json({ message: "Name is required." });
-    return;
+    return { message: "Name is required." };
   }
 
   const companySizeMin = requireWholeNumber(
@@ -52,8 +58,7 @@ profilesRouter.post("/", async (req, res) => {
     "Company size must be a whole number.",
   );
   if (isFieldError(companySizeMin)) {
-    res.status(400).json(companySizeMin);
-    return;
+    return companySizeMin;
   }
 
   const companySizeMax = requireWholeNumber(
@@ -61,8 +66,7 @@ profilesRouter.post("/", async (req, res) => {
     "Company size must be a whole number.",
   );
   if (isFieldError(companySizeMax)) {
-    res.status(400).json(companySizeMax);
-    return;
+    return companySizeMax;
   }
 
   if (
@@ -70,10 +74,7 @@ profilesRouter.post("/", async (req, res) => {
     companySizeMax !== null &&
     companySizeMin > companySizeMax
   ) {
-    res.status(400).json({
-      message: "Company size minimum cannot exceed the maximum.",
-    });
-    return;
+    return { message: "Company size minimum cannot exceed the maximum." };
   }
 
   const budgetMin = requireWholeNumber(
@@ -81,8 +82,7 @@ profilesRouter.post("/", async (req, res) => {
     "Budget must be a whole number.",
   );
   if (isFieldError(budgetMin)) {
-    res.status(400).json(budgetMin);
-    return;
+    return budgetMin;
   }
 
   const budgetMax = requireWholeNumber(
@@ -90,15 +90,11 @@ profilesRouter.post("/", async (req, res) => {
     "Budget must be a whole number.",
   );
   if (isFieldError(budgetMax)) {
-    res.status(400).json(budgetMax);
-    return;
+    return budgetMax;
   }
 
   if (budgetMin !== null && budgetMax !== null && budgetMin > budgetMax) {
-    res.status(400).json({
-      message: "Budget minimum cannot exceed the maximum.",
-    });
-    return;
+    return { message: "Budget minimum cannot exceed the maximum." };
   }
 
   const industriesInclude = readStringList(body.industries);
@@ -123,30 +119,49 @@ profilesRouter.post("/", async (req, res) => {
     budgetNotes,
   });
   if (criteriaError) {
-    res.status(400).json({ message: criteriaError });
+    return { message: criteriaError };
+  }
+
+  return {
+    name,
+    industriesInclude,
+    industriesExclude,
+    country,
+    region,
+    city,
+    locations: readStringList(body.locations),
+    companySizeMin,
+    companySizeMax,
+    budgetCurrency: normalizedBudgetCurrency(budgetCurrency),
+    budgetMin,
+    budgetMax,
+    budgetNotes,
+    businessNeedKeywords: readStringList(body.businessNeedKeywords),
+    businessNeedDescription: readText(body.businessNeedDescription),
+    outreachTone: readOptionalText(body.outreachTone),
+    messageConstraints: readOptionalText(body.messageConstraints),
+  };
+}
+
+export const profilesRouter = Router();
+
+profilesRouter.post("/", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const body = asRecord(req.body);
+  const criteria = readProfileCriteria(body);
+  if (isCriteriaError(criteria)) {
+    res.status(400).json(criteria);
     return;
   }
 
   try {
     const row = await insertIdealCustomerProfile({
       userId,
-      name,
-      industriesInclude,
-      industriesExclude,
-      country,
-      region,
-      city,
-      locations: readStringList(body.locations),
-      companySizeMin,
-      companySizeMax,
-      budgetCurrency: normalizedBudgetCurrency(budgetCurrency),
-      budgetMin,
-      budgetMax,
-      budgetNotes,
-      businessNeedKeywords: readStringList(body.businessNeedKeywords),
-      businessNeedDescription: readText(body.businessNeedDescription),
-      outreachTone: readOptionalText(body.outreachTone),
-      messageConstraints: readOptionalText(body.messageConstraints),
+      ...criteria,
       isActive: body.isActive !== false,
     });
     const response: CreateIdealCustomerProfileResponse = {
@@ -155,6 +170,11 @@ profilesRouter.post("/", async (req, res) => {
     };
     res.status(201).json(response);
   } catch (err) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ message: profileNameTakenMessage });
+      return;
+    }
+
     sendFailure(res, err);
   }
 });
@@ -244,7 +264,45 @@ profilesRouter.patch("/:icpId", async (req, res) => {
   }
 });
 
-const profileNotFound = { message: "Ideal customer profile not found." };
+profilesRouter.put("/:icpId", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const icpId = req.params.icpId;
+  if (!isUuid(icpId)) {
+    res.status(404).json(profileNotFound);
+    return;
+  }
+
+  const criteria = readProfileCriteria(asRecord(req.body));
+  if (isCriteriaError(criteria)) {
+    res.status(400).json(criteria);
+    return;
+  }
+
+  try {
+    const row = await updateIdealCustomerProfile(icpId, userId, criteria);
+    if (!row) {
+      res.status(404).json(profileNotFound);
+      return;
+    }
+
+    const response: UpdateIdealCustomerProfileResponse = {
+      message: profileUpdatedMessage,
+      profile: mapProfile(row),
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ message: profileNameTakenMessage });
+      return;
+    }
+
+    sendFailure(res, err);
+  }
+});
 
 function postgresErrorCode(err: unknown): string | undefined {
   if (typeof err !== "object" || err === null || !("code" in err)) {
@@ -254,16 +312,24 @@ function postgresErrorCode(err: unknown): string | undefined {
   return typeof err.code === "string" ? err.code : undefined;
 }
 
-function isForeignKeyViolation(err: unknown): boolean {
-  if (postgresErrorCode(err) === "23503") {
+function isPostgresError(err: unknown, code: string): boolean {
+  if (postgresErrorCode(err) === code) {
     return true;
   }
 
   if (typeof err === "object" && err !== null && "cause" in err) {
-    return postgresErrorCode(err.cause) === "23503";
+    return postgresErrorCode(err.cause) === code;
   }
 
   return false;
+}
+
+function isForeignKeyViolation(err: unknown): boolean {
+  return isPostgresError(err, "23503");
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return isPostgresError(err, "23505");
 }
 
 profilesRouter.delete("/:icpId", async (req, res) => {

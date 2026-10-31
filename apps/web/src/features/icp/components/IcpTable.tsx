@@ -136,6 +136,14 @@ export function IcpTable({
                 </TableCell>
                 <TableCell>
                   <Button
+                    component={Link}
+                    to={`/icp/${profile.icpId}/edit`}
+                    state={{ returnTo: "/icp" }}
+                    size="small"
+                  >
+                    Edit
+                  </Button>
+                  <Button
                     size="small"
                     color="error"
                     onClick={() => {

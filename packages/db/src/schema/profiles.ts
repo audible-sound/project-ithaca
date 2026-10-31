@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "./users.js";
@@ -35,6 +36,10 @@ export const idealCustomerProfiles = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => [
+    uniqueIndex("ideal_customer_profiles_user_id_name").on(
+      table.userId,
+      sql`lower(${table.name})`,
+    ),
     check(
       "ideal_customer_profiles_company_size_range",
       sql`${table.companySizeMin} IS NULL OR ${table.companySizeMax} IS NULL OR ${table.companySizeMin} <= ${table.companySizeMax}`,

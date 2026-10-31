@@ -87,16 +87,26 @@ export function IcpDetailPage(): ReactElement {
             ) : null}
           </Stack>
           {visibleProfile ? (
-            <Button
-              variant="outlined"
-              color="error"
-              disabled={deleting}
-              onClick={() => {
-                setConfirmOpen(true);
-              }}
-            >
-              Delete
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                component={Link}
+                to={`/icp/${visibleProfile.icpId}/edit`}
+                state={{ returnTo: `/icp/${visibleProfile.icpId}` }}
+                variant="contained"
+              >
+                Edit
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                disabled={deleting}
+                onClick={() => {
+                  setConfirmOpen(true);
+                }}
+              >
+                Delete
+              </Button>
+            </Stack>
           ) : null}
         </Stack>
       </Stack>

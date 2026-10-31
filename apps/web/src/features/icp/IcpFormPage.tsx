@@ -5,8 +5,9 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useState, type ReactElement, type SubmitEvent } from "react";
-import { useNavigate } from "react-router";
+import type { IdealCustomerProfile } from "@ithaca/shared";
+import { useEffect, useState, type ReactElement, type SubmitEvent } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useIcpStore, type IcpFormValues } from "../../stores/icpStore";
 
 const emptyProfile: IcpFormValues = {
@@ -28,6 +29,44 @@ const emptyProfile: IcpFormValues = {
   messageConstraints: "",
 };
 
+function numberText(value: number | null): string {
+  return value === null ? "" : String(value);
+}
+
+function profileToFormValues(profile: IdealCustomerProfile): IcpFormValues {
+  return {
+    name: profile.name,
+    industriesInclude: profile.industries.join(", "),
+    industriesExclude: profile.industriesExclude.join(", "),
+    country: profile.country,
+    region: profile.region,
+    city: profile.city,
+    companySizeMin: numberText(profile.companySizeMin),
+    companySizeMax: numberText(profile.companySizeMax),
+    budgetCurrency: profile.budgetCurrency,
+    budgetMin: numberText(profile.budgetMin),
+    budgetMax: numberText(profile.budgetMax),
+    budgetNotes: profile.budgetNotes,
+    businessNeedKeywords: profile.businessNeedKeywords.join(", "),
+    businessNeedDescription: profile.businessNeedDescription,
+    outreachTone: profile.outreachTone ?? "",
+    messageConstraints: profile.messageConstraints ?? "",
+  };
+}
+
+function editReturnTo(state: unknown, icpId: string): string {
+  if (
+    state !== null &&
+    typeof state === "object" &&
+    "returnTo" in state &&
+    typeof state.returnTo === "string"
+  ) {
+    return state.returnTo;
+  }
+
+  return `/icp/${icpId}`;
+}
+
 const fieldGrid = {
   display: "grid",
   gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
@@ -36,11 +75,42 @@ const fieldGrid = {
 } as const;
 
 export function IcpFormPage(): ReactElement {
+  const { icpId } = useParams();
+  const editing = icpId !== undefined;
+  const location = useLocation();
   const navigate = useNavigate();
+  const cancelTo = icpId ? editReturnTo(location.state, icpId) : "/icp";
   const message = useIcpStore((state) => state.message);
   const status = useIcpStore((state) => state.status);
+  const profile = useIcpStore((state) => state.profile);
+  const detailStatus = useIcpStore((state) => state.detailStatus);
+  const detailMessage = useIcpStore((state) => state.detailMessage);
+  const loadProfile = useIcpStore((state) => state.loadProfile);
   const createProfile = useIcpStore((state) => state.createProfile);
+  const updateProfile = useIcpStore((state) => state.updateProfile);
   const [values, setValues] = useState(emptyProfile);
+  const [ready, setReady] = useState(!editing);
+
+  const visibleProfile =
+    profile && icpId && profile.icpId === icpId ? profile : null;
+  const loadFailed = editing && detailStatus === "error";
+  const showForm = !editing || (ready && !loadFailed);
+
+  useEffect(() => {
+    if (!icpId) {
+      return;
+    }
+    setReady(false);
+    void loadProfile(icpId);
+  }, [icpId, loadProfile]);
+
+  useEffect(() => {
+    if (!icpId || !visibleProfile || ready) {
+      return;
+    }
+    setValues(profileToFormValues(visibleProfile));
+    setReady(true);
+  }, [icpId, ready, visibleProfile]);
 
   function setText(field: keyof IcpFormValues, value: string): void {
     setValues((current) => ({ ...current, [field]: value }));
@@ -48,22 +118,31 @@ export function IcpFormPage(): ReactElement {
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault();
-    void createProfile(values).then((created) => {
-      if (created) {
-        navigate("/icp");
+    const save =
+      editing && icpId ? updateProfile(icpId, values) : createProfile(values);
+    void save.then((saved) => {
+      if (!saved) {
+        return;
       }
+      navigate(editing && icpId ? `/icp/${icpId}` : "/icp");
     });
   }
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 720 }}>
       <Box>
-        <Typography variant="h1">Ideal Customer Profile</Typography>
+        <Typography variant="h1">
+          {editing ? "Edit ideal customer profile" : "Ideal Customer Profile"}
+        </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
           An empty industry, size, location, budget, or business need means that
           criterion is unrestricted.
         </Typography>
       </Box>
+      {loadFailed && detailMessage ? (
+        <Alert severity="error">{detailMessage}</Alert>
+      ) : null}
+      {showForm ? (
       <Paper
         component="form"
         elevation={0}
@@ -296,16 +375,23 @@ export function IcpFormPage(): ReactElement {
               {message}
             </Alert>
           ) : null}
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={status === "loading"}
-            sx={{ alignSelf: "flex-start" }}
-          >
-            Save profile
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={status === "loading"}
+            >
+              Save profile
+            </Button>
+            {editing && icpId ? (
+              <Button component={Link} to={cancelTo}>
+                Cancel
+              </Button>
+            ) : null}
+          </Stack>
         </Stack>
       </Paper>
+      ) : null}
     </Stack>
   );
 }
