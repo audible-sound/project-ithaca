@@ -1,10 +1,6 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Checkbox from "@mui/material/Checkbox";
-import FormControl from "@mui/material/FormControl";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import FormHelperText from "@mui/material/FormHelperText";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -30,7 +26,6 @@ const emptyProfile: IcpFormValues = {
   businessNeedDescription: "",
   outreachTone: "",
   messageConstraints: "",
-  isActive: true,
 };
 
 const fieldGrid = {
@@ -98,27 +93,6 @@ export function IcpFormPage(): ReactElement {
                 sx={{ gridColumn: "1 / -1" }}
                 fullWidth
               />
-              <FormControl sx={{ gridColumn: "1 / -1" }}>
-                <FormControlLabel
-                  sx={{ mr: 0 }}
-                  control={
-                    <Checkbox
-                      checked={values.isActive}
-                      onChange={(event) => {
-                        setValues((current) => ({
-                          ...current,
-                          isActive: event.target.checked,
-                        }));
-                      }}
-                      size="small"
-                    />
-                  }
-                  label="Active"
-                />
-                <FormHelperText sx={{ mx: 0 }}>
-                  When checked, this profile is the one used for lead search.
-                </FormHelperText>
-              </FormControl>
             </Box>
           </Stack>
 

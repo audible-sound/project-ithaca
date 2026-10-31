@@ -55,3 +55,11 @@ export interface CreateIdealCustomerProfileResponse {
 export interface ListIdealCustomerProfilesResponse {
   profiles: IdealCustomerProfile[];
 }
+
+export interface UpdateIdealCustomerProfileActiveRequest {
+  isActive: boolean;
+}
+
+export interface UpdateIdealCustomerProfileActiveResponse {
+  profile: IdealCustomerProfile;
+}

@@ -2,10 +2,12 @@ import {
   findIdealCustomerProfileById,
   insertIdealCustomerProfile,
   listIdealCustomerProfilesByUser,
+  updateIdealCustomerProfileActive,
 } from "@ithaca/db";
 import type {
   CreateIdealCustomerProfileResponse,
   ListIdealCustomerProfilesResponse,
+  UpdateIdealCustomerProfileActiveResponse,
 } from "@ithaca/shared";
 import { Router } from "express";
 import { sendFailure, signedInUserId } from "../lib/http.js";
@@ -194,6 +196,44 @@ profilesRouter.get("/:icpId", async (req, res) => {
     }
 
     res.status(200).json(mapProfile(row));
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+profilesRouter.patch("/:icpId", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const icpId = req.params.icpId;
+  if (!isUuid(icpId)) {
+    res.status(404).json({ message: "Ideal customer profile not found." });
+    return;
+  }
+
+  const body = asRecord(req.body);
+  if (typeof body.isActive !== "boolean") {
+    res.status(400).json({ message: "Active must be true or false." });
+    return;
+  }
+
+  try {
+    const row = await updateIdealCustomerProfileActive(
+      icpId,
+      userId,
+      body.isActive,
+    );
+    if (!row) {
+      res.status(404).json({ message: "Ideal customer profile not found." });
+      return;
+    }
+
+    const response: UpdateIdealCustomerProfileActiveResponse = {
+      profile: mapProfile(row),
+    };
+    res.status(200).json(response);
   } catch (err) {
     sendFailure(res, err);
   }

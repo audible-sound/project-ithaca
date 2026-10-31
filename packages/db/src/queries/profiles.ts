@@ -148,3 +148,25 @@ export async function insertIdealCustomerProfile(
 
   return row;
 }
+
+export async function updateIdealCustomerProfileActive(
+  icpId: string,
+  userId: string,
+  isActive: boolean,
+): Promise<IdealCustomerProfile | null> {
+  const rows = await requireDb()
+    .update(idealCustomerProfiles)
+    .set({
+      isActive,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(idealCustomerProfiles.icpId, icpId),
+        eq(idealCustomerProfiles.userId, userId),
+      ),
+    )
+    .returning();
+
+  return rows[0] ?? null;
+}

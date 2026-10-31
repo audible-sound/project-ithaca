@@ -1,5 +1,7 @@
 import type { IdealCustomerProfile } from "@ithaca/shared";
 import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -9,6 +11,7 @@ import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
 import { Link } from "react-router";
 import type { RequestStatus } from "../../../stores/api";
+import { useIcpStore } from "../../../stores/icpStore";
 import {
   companySizeText,
   industriesText,
@@ -30,6 +33,9 @@ export function IcpTable({
   profiles,
   status,
 }: IcpTableProps): ReactElement | null {
+  const setProfileActive = useIcpStore((state) => state.setProfileActive);
+  const updatingIcpId = useIcpStore((state) => state.updatingIcpId);
+
   if (status === "error" && profiles.length === 0) {
     return null;
   }
@@ -78,15 +84,38 @@ export function IcpTable({
                 <TableCell>{locationText(profile)}</TableCell>
                 <TableCell>{companySizeText(profile)}</TableCell>
                 <TableCell>
-                  <Typography
-                    variant="body2"
-                    component="span"
-                    sx={{
-                      color: profile.isActive ? "success.main" : "text.secondary",
-                    }}
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ alignItems: "center" }}
                   >
-                    {profile.isActive ? "Active" : "Inactive"}
-                  </Typography>
+                    <Switch
+                      checked={profile.isActive}
+                      size="small"
+                      disabled={updatingIcpId === profile.icpId}
+                      onChange={(_event, checked) => {
+                        void setProfileActive(profile.icpId, checked);
+                      }}
+                      slotProps={{
+                        input: {
+                          "aria-label": profile.isActive
+                            ? "Disable profile"
+                            : "Activate profile",
+                        },
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      component="span"
+                      sx={{
+                        color: profile.isActive
+                          ? "success.main"
+                          : "text.secondary",
+                      }}
+                    >
+                      {profile.isActive ? "Active" : "Inactive"}
+                    </Typography>
+                  </Stack>
                 </TableCell>
               </TableRow>
             ))}

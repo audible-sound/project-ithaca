@@ -3,6 +3,7 @@ import type {
   CreateIdealCustomerProfileResponse,
   IdealCustomerProfile,
   ListIdealCustomerProfilesResponse,
+  UpdateIdealCustomerProfileActiveResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
 import { apiUrl, authToken, readJson } from "./api";
@@ -25,7 +26,6 @@ export type IcpFormValues = {
   businessNeedDescription: string;
   outreachTone: string;
   messageConstraints: string;
-  isActive: boolean;
 };
 
 type IcpStore = {
@@ -37,9 +37,12 @@ type IcpStore = {
   profile: IdealCustomerProfile | null;
   detailStatus: RequestStatus;
   detailMessage: string | null;
+  updatingIcpId: string | null;
+  activeMessage: string | null;
   createProfile: (values: IcpFormValues) => Promise<boolean>;
   loadProfiles: () => Promise<void>;
   loadProfile: (icpId: string) => Promise<void>;
+  setProfileActive: (icpId: string, isActive: boolean) => Promise<void>;
 };
 
 const maxCompanySize = 2_147_483_647;
@@ -111,6 +114,8 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
   profile: null,
   detailStatus: "idle",
   detailMessage: null,
+  updatingIcpId: null,
+  activeMessage: null,
   loadProfile: async (icpId) => {
     const token = authToken();
     if (!token) {
@@ -301,7 +306,7 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
       businessNeedDescription: values.businessNeedDescription.trim(),
       outreachTone: values.outreachTone.trim(),
       messageConstraints: values.messageConstraints.trim(),
-      isActive: values.isActive,
+      isActive: true,
     };
     withNumber(body, "companySizeMin", companySizeMin);
     withNumber(body, "companySizeMax", companySizeMax);
@@ -340,6 +345,81 @@ export const useIcpStore = create<IcpStore>()((set, get) => ({
         status: "error",
       });
       return false;
+    }
+  },
+  setProfileActive: async (icpId, isActive) => {
+    const token = authToken();
+    if (!token) {
+      set({ activeMessage: "Authentication required." });
+      return;
+    }
+
+    const current = get();
+    const previous = current.profiles.find((profile) => profile.icpId === icpId);
+    if (!previous || previous.isActive === isActive) {
+      return;
+    }
+
+    const previousActive = previous.isActive;
+
+    function applyActive(nextActive: boolean): {
+      profiles: IdealCustomerProfile[];
+      profile: IdealCustomerProfile | null;
+    } {
+      const detail = get().profile;
+      return {
+        profiles: get().profiles.map((profile) =>
+          profile.icpId === icpId ? { ...profile, isActive: nextActive } : profile,
+        ),
+        profile:
+          detail?.icpId === icpId ? { ...detail, isActive: nextActive } : detail,
+      };
+    }
+
+    set({
+      ...applyActive(isActive),
+      updatingIcpId: icpId,
+      activeMessage: null,
+    });
+
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${icpId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ isActive }),
+      });
+      const data = await readJson<
+        Partial<UpdateIdealCustomerProfileActiveResponse> & { message?: string }
+      >(res);
+      if (!res.ok || !("profile" in data) || !data.profile) {
+        set({
+          ...applyActive(previousActive),
+          activeMessage: data.message ?? "Failed to reach API",
+          updatingIcpId: null,
+        });
+        return;
+      }
+
+      const saved = data.profile;
+      const detail = get().profile;
+      set({
+        profiles: get().profiles.map((profile) =>
+          profile.icpId === icpId ? saved : profile,
+        ),
+        profile: detail?.icpId === icpId ? saved : detail,
+        updatingIcpId: null,
+        activeMessage: null,
+      });
+    } catch (err) {
+      set({
+        ...applyActive(previousActive),
+        activeMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+        updatingIcpId: null,
+      });
     }
   },
 }));
