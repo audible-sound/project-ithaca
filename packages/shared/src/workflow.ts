@@ -176,6 +176,9 @@ export interface WorkflowStep {
 
 export interface WorkflowRunLead {
   leadId: string;
+  companyName: string;
+  /** `manual` was entered by a user. `identified` was found by the identify agent. */
+  sourceType: "manual" | "identified";
   currentStage: WorkflowStage;
   status: WorkflowLeadStatus;
   errorMessage: string | null;

@@ -9,6 +9,7 @@ import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState, type ReactElement } from "react";
+import { Link } from "react-router";
 import { useLeadStore } from "../../stores/leadStore";
 import { capitalize } from "../../utils/string";
 import { LeadTable } from "./components/LeadTable";
@@ -121,6 +122,7 @@ export function LeadsPage(): ReactElement {
   const leads = useLeadStore((state) => state.leads);
   const listStatus = useLeadStore((state) => state.listStatus);
   const listMessage = useLeadStore((state) => state.listMessage);
+  const deleteMessage = useLeadStore((state) => state.deleteMessage);
   const loadLeads = useLeadStore((state) => state.loadLeads);
   const [ownerFilter, setOwnerFilter] = useState(allValue);
   const [icpFilter, setIcpFilter] = useState(allValue);
@@ -212,13 +214,14 @@ export function LeadsPage(): ReactElement {
         sx={{ justifyContent: "space-between", alignItems: "center" }}
       >
         <Typography variant="h1">Leads</Typography>
-        <Button variant="contained" disabled>
+        <Button component={Link} to="/leads/new" variant="contained">
           Add lead
         </Button>
       </Stack>
       {listStatus === "error" && listMessage ? (
         <Alert severity="error">{listMessage}</Alert>
       ) : null}
+      {deleteMessage ? <Alert severity="error">{deleteMessage}</Alert> : null}
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
           {filtersAtAll

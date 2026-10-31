@@ -7,6 +7,7 @@ import type {
 } from "@ithaca/shared";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
+import { companies, leads } from "../schema/leads.js";
 import type {
   TokenUsage,
   TokenUsageAgentType,
@@ -142,17 +143,32 @@ export async function listWorkflowStepsByRunId(
     );
 }
 
+export type WorkflowRunLeadListRow = WorkflowRunLead & {
+  companyName: string;
+  sourceType: string;
+};
+
 /**
- * Lists workflow run leads by a workflow run's ID.
+ * Lists workflow run leads by a workflow run's ID, including soft-deleted leads.
  * @param workflowRunId - The ID of the workflow run to list leads for.
  * @returns The workflow run leads if found, otherwise an empty array.
  */
 export async function listWorkflowRunLeadsByRunId(
   workflowRunId: string,
-): Promise<WorkflowRunLead[]> {
+): Promise<WorkflowRunLeadListRow[]> {
   return requireDb()
-    .select()
+    .select({
+      workflowRunId: workflowRunLeads.workflowRunId,
+      leadId: workflowRunLeads.leadId,
+      currentStage: workflowRunLeads.currentStage,
+      status: workflowRunLeads.status,
+      errorMessage: workflowRunLeads.errorMessage,
+      companyName: companies.name,
+      sourceType: leads.sourceType,
+    })
     .from(workflowRunLeads)
+    .innerJoin(leads, eq(workflowRunLeads.leadId, leads.leadId))
+    .innerJoin(companies, eq(leads.companyId, companies.companyId))
     .where(eq(workflowRunLeads.workflowRunId, workflowRunId))
     .orderBy(asc(workflowRunLeads.leadId));
 }

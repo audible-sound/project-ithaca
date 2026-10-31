@@ -10,6 +10,8 @@ import TableSortLabel from "@mui/material/TableSortLabel";
 import Typography from "@mui/material/Typography";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
+import { useAuthStore } from "../../../stores/authStore";
+import { useLeadStore } from "../../../stores/leadStore";
 import {
   TablePaginationBar,
   tablePageSize,
@@ -18,6 +20,7 @@ import {
 import type { RequestStatus } from "../../../stores/api";
 import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
+import { LeadDeleteDialog } from "./LeadDeleteDialog";
 
 type LeadTableProps = {
   leads: LeadListItem[];
@@ -73,12 +76,27 @@ export function LeadTable({
   status,
   emptyLabel,
 }: LeadTableProps): ReactElement | null {
+  const userId = useAuthStore((state) => state.userId);
+  const deleteLead = useLeadStore((state) => state.deleteLead);
   const [scoreDirection, setScoreDirection] = useState<ScoreDirection>("desc");
+  const [pending, setPending] = useState<LeadListItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const listKey = leads
     .map((lead) => lead.leadId)
     .sort()
     .join(",");
   const { page, setPage } = useTablePage(listKey, leads.length);
+
+  async function onConfirmDelete(): Promise<void> {
+    if (!pending) {
+      return;
+    }
+
+    setDeleting(true);
+    await deleteLead(pending.leadId);
+    setDeleting(false);
+    setPending(null);
+  }
 
   if (status === "error" && leads.length === 0) {
     return null;
@@ -180,12 +198,34 @@ export function LeadTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    <Button size="small" disabled>
-                      Edit
-                    </Button>
-                    <Button size="small" color="error" disabled>
-                      Delete
-                    </Button>
+                    {lead.ownerId !== null && lead.ownerId === userId ? (
+                      <Button
+                        size="small"
+                        component={Link}
+                        to={`/leads/${lead.leadId}/edit`}
+                      >
+                        Edit
+                      </Button>
+                    ) : (
+                      <Button size="small" disabled>
+                        Edit
+                      </Button>
+                    )}
+                    {lead.ownerId !== null && lead.ownerId === userId ? (
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setPending(lead);
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    ) : (
+                      <Button size="small" color="error" disabled>
+                        Delete
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -200,6 +240,21 @@ export function LeadTable({
           ) : null}
         </>
       )}
+      {pending ? (
+        <LeadDeleteDialog
+          open
+          companyName={pending.companyName}
+          deleting={deleting}
+          onCancel={() => {
+            if (!deleting) {
+              setPending(null);
+            }
+          }}
+          onConfirm={() => {
+            void onConfirmDelete();
+          }}
+        />
+      ) : null}
     </Paper>
   );
 }

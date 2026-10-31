@@ -1,5 +1,5 @@
 import type { WorkflowLeadContact, WorkflowLeadContext } from "@ithaca/shared";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type { CompanySizeBand, Lead, SourceReference } from "../schema/leads.js";
 import {
@@ -124,6 +124,24 @@ export type CompanyProfileFill = {
 export type InsertIdentifiedLeadResult = {
   leadId: string;
   storedContact: boolean;
+};
+
+/** Company and contact facts for a lead typed in by a person. */
+export type ManualLeadFacts = {
+  companyName: string;
+  website: string | null;
+  industry: string | null;
+  location: string | null;
+  companySizeBand: CompanySizeBand | null;
+  description: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
+  companyLinkedinUrl: string | null;
+  contactName: string | null;
+  contactJobTitle: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  contactLinkedinUrl: string | null;
 };
 
 /**
@@ -310,7 +328,13 @@ export async function findLeadById(
   const rows = await requireDb()
     .select()
     .from(leads)
-    .where(and(eq(leads.leadId, leadId), eq(leads.createdByUserId, userId)))
+    .where(
+      and(
+        eq(leads.leadId, leadId),
+        eq(leads.createdByUserId, userId),
+        isNull(leads.deletedAt),
+      ),
+    )
     .limit(1);
 
   return rows[0] ?? null;
@@ -369,7 +393,7 @@ export async function findLeadDetailById(
       eq(leadQualifications.leadId, leads.leadId),
     )
     .leftJoin(leadSummaries, eq(leadSummaries.leadId, leads.leadId))
-    .where(eq(leads.leadId, leadId))
+    .where(and(eq(leads.leadId, leadId), isNull(leads.deletedAt)))
     .limit(1);
 
   return rows[0] ?? null;
@@ -393,7 +417,11 @@ export async function listLeadsByIdsForUser(
     .select()
     .from(leads)
     .where(
-      and(inArray(leads.leadId, leadIds), eq(leads.createdByUserId, userId)),
+      and(
+        inArray(leads.leadId, leadIds),
+        eq(leads.createdByUserId, userId),
+        isNull(leads.deletedAt),
+      ),
     );
 }
 
@@ -457,11 +485,12 @@ export async function listLeadsByUser(userId: string): Promise<LeadListRow[]> {
       lifecycleStatus: leads.lifecycleStatus,
       createdAt: leads.createdAt,
       updatedAt: leads.updatedAt,
+      deletedAt: leads.deletedAt,
       companyName: companies.name,
     })
     .from(leads)
     .innerJoin(companies, eq(leads.companyId, companies.companyId))
-    .where(eq(leads.createdByUserId, userId))
+    .where(and(eq(leads.createdByUserId, userId), isNull(leads.deletedAt)))
     .orderBy(desc(leads.createdAt), desc(leads.leadId));
 }
 
@@ -483,6 +512,7 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       lifecycleStatus: leads.lifecycleStatus,
       createdAt: leads.createdAt,
       updatedAt: leads.updatedAt,
+      deletedAt: leads.deletedAt,
       companyName: companies.name,
       ownerName: users.fullName,
       contactName: contacts.fullName,
@@ -497,6 +527,7 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       leadQualifications,
       eq(leadQualifications.leadId, leads.leadId),
     )
+    .where(isNull(leads.deletedAt))
     .orderBy(
       sql`${leadQualifications.score} DESC NULLS LAST`,
       desc(leads.createdAt),
@@ -807,13 +838,21 @@ export async function insertIdentifiedLead(
           .set(patch)
           .where(eq(companies.companyId, companyId));
       }
+      const leadPatch: {
+        deletedAt: null;
+        updatedAt: Date;
+        primaryContactId?: string;
+      } = { deletedAt: null, updatedAt: now };
+
       if (existing.primaryContactId === null && contactName !== undefined) {
         contactId = await insertContact(companyId, contactName);
-        await tx
-          .update(leads)
-          .set({ primaryContactId: contactId, updatedAt: now })
-          .where(eq(leads.leadId, leadId));
+        leadPatch.primaryContactId = contactId;
       }
+
+      await tx
+        .update(leads)
+        .set(leadPatch)
+        .where(eq(leads.leadId, leadId));
     } else {
       const companyRows = await tx
         .insert(companies)
@@ -903,6 +942,211 @@ export async function insertIdentifiedLead(
     }
 
     return { leadId, storedContact };
+  });
+}
+
+/**
+ * Stores a company, optional contact, and lead entered by the signed-in user.
+ * The lead starts as manual and new. A manual source row records the entry.
+ * @param userId - The user who owns the lead.
+ * @param input - Company and contact facts. Company name is required.
+ * @returns The new lead id.
+ */
+export async function insertManualLead(
+  userId: string,
+  input: ManualLeadFacts,
+): Promise<string> {
+  const companyName = input.companyName.trim();
+  if (companyName.length === 0) {
+    throw new Error("Company name is required.");
+  }
+
+  return requireDb().transaction(async (tx) => {
+    const now = new Date();
+    const companyRows = await tx
+      .insert(companies)
+      .values({
+        name: companyName,
+        website: input.website,
+        industry: input.industry,
+        sizeBand: input.companySizeBand,
+        location: input.location,
+        description: input.description,
+        email: input.companyEmail,
+        phone: input.companyPhone,
+        linkedinUrl: input.companyLinkedinUrl,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const company = companyRows[0];
+    if (!company) {
+      throw new Error("Company was not created.");
+    }
+
+    let contactId: string | null = null;
+    if (input.contactName !== null) {
+      const contactRows = await tx
+        .insert(contacts)
+        .values({
+          companyId: company.companyId,
+          fullName: input.contactName,
+          jobTitle: input.contactJobTitle,
+          email: input.contactEmail,
+          phone: input.contactPhone,
+          linkedinUrl: input.contactLinkedinUrl,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      const contact = contactRows[0];
+      if (!contact) {
+        throw new Error("Contact was not created.");
+      }
+
+      contactId = contact.contactId;
+    }
+
+    const leadRows = await tx
+      .insert(leads)
+      .values({
+        companyId: company.companyId,
+        primaryContactId: contactId,
+        createdByUserId: userId,
+        sourceType: "manual",
+        lifecycleStatus: "new",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const lead = leadRows[0];
+    if (!lead) {
+      throw new Error("Lead was not created.");
+    }
+
+    const sourceRows = await tx
+      .insert(sourceReferences)
+      .values({
+        companyId: company.companyId,
+        contactId,
+        leadId: lead.leadId,
+        sourceProvider: "manual",
+        sourceUrl: null,
+        sourceTitle: "Manual entry",
+        retrievedAt: now,
+        rawSnippet: null,
+      })
+      .returning();
+
+    if (!sourceRows[0]) {
+      throw new Error("Source reference was not created.");
+    }
+
+    return lead.leadId;
+  });
+}
+
+/**
+ * Rewrites company and contact facts on a lead owned by the user.
+ * Source, lifecycle, and owner stay as they are. A contact name updates or
+ * creates the primary contact. No contact name clears the primary contact.
+ * @param leadId - The lead to update.
+ * @param userId - The user who must own the lead.
+ * @param input - Company and contact facts. Company name is required.
+ * @returns The lead id, or null when the lead is missing or owned by someone else.
+ */
+export async function updateLeadFacts(
+  leadId: string,
+  userId: string,
+  input: ManualLeadFacts,
+): Promise<string | null> {
+  const companyName = input.companyName.trim();
+  if (companyName.length === 0) {
+    throw new Error("Company name is required.");
+  }
+
+  return requireDb().transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(leads)
+      .where(
+        and(
+          eq(leads.leadId, leadId),
+          eq(leads.createdByUserId, userId),
+          isNull(leads.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    const lead = existing[0];
+    if (!lead) {
+      return null;
+    }
+
+    const now = new Date();
+    await tx
+      .update(companies)
+      .set({
+        name: companyName,
+        website: input.website,
+        industry: input.industry,
+        sizeBand: input.companySizeBand,
+        location: input.location,
+        description: input.description,
+        email: input.companyEmail,
+        phone: input.companyPhone,
+        linkedinUrl: input.companyLinkedinUrl,
+        updatedAt: now,
+      })
+      .where(eq(companies.companyId, lead.companyId));
+
+    let primaryContactId = lead.primaryContactId;
+    if (input.contactName === null) {
+      primaryContactId = null;
+    } else if (primaryContactId !== null) {
+      await tx
+        .update(contacts)
+        .set({
+          fullName: input.contactName,
+          jobTitle: input.contactJobTitle,
+          email: input.contactEmail,
+          phone: input.contactPhone,
+          linkedinUrl: input.contactLinkedinUrl,
+          updatedAt: now,
+        })
+        .where(eq(contacts.contactId, primaryContactId));
+    } else {
+      const contactRows = await tx
+        .insert(contacts)
+        .values({
+          companyId: lead.companyId,
+          fullName: input.contactName,
+          jobTitle: input.contactJobTitle,
+          email: input.contactEmail,
+          phone: input.contactPhone,
+          linkedinUrl: input.contactLinkedinUrl,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      const contact = contactRows[0];
+      if (!contact) {
+        throw new Error("Contact was not created.");
+      }
+
+      primaryContactId = contact.contactId;
+    }
+
+    await tx
+      .update(leads)
+      .set({ primaryContactId, updatedAt: now })
+      .where(eq(leads.leadId, leadId));
+
+    return leadId;
   });
 }
 
@@ -997,4 +1241,30 @@ export async function fillCompanyProfiles(fills: CompanyProfileFill[]): Promise<
         .where(eq(companies.companyId, fill.companyId));
     }
   });
+}
+
+/**
+ * Marks a lead owned by the user as deleted.
+ * Company, contact, sources, and workflow rows stay.
+ * @param leadId - The lead to delete.
+ * @param userId - The user who must own the lead.
+ * @returns The lead, or null when it is missing, already deleted, or owned by someone else.
+ */
+export async function deleteLead(
+  leadId: string,
+  userId: string,
+): Promise<Lead | null> {
+  const rows = await requireDb()
+    .update(leads)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(leads.leadId, leadId),
+        eq(leads.createdByUserId, userId),
+        isNull(leads.deletedAt),
+      ),
+    )
+    .returning();
+
+  return rows[0] ?? null;
 }

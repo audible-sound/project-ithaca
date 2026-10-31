@@ -208,3 +208,48 @@ export interface LeadDetail {
   followUp: LeadFollowUpDetail | null;
   pipeline: LeadPipelineStage[];
 }
+
+/**
+ * Company and contact facts a person can type in.
+ * Empty optional fields are null. Source, stage, and owner are not part of this input.
+ */
+export interface ManualLeadInput {
+  companyName: string;
+  website: string | null;
+  industry: string | null;
+  location: string | null;
+  /** One of `1-10`, `11-50`, `51-200`, `201-1000`, `1000+`, or null. */
+  companySizeBand: string | null;
+  description: string | null;
+  companyEmail: string | null;
+  companyPhone: string | null;
+  companyLinkedinUrl: string | null;
+  contactName: string | null;
+  contactJobTitle: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  contactLinkedinUrl: string | null;
+}
+
+/** Body of `POST /leads`. */
+export type CreateLeadRequest = ManualLeadInput;
+
+/** Body of a successful `POST /leads`. */
+export interface CreateLeadResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of `PUT /leads/:leadId`. */
+export type UpdateLeadRequest = ManualLeadInput;
+
+/** Body of a successful `PUT /leads/:leadId`. */
+export interface UpdateLeadResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `DELETE /leads/:leadId`. */
+export interface DeleteLeadResponse {
+  message: string;
+}

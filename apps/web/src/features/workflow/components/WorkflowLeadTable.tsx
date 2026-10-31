@@ -1,4 +1,4 @@
-import type { LeadSummary, WorkflowRunLead } from "@ithaca/shared";
+import type { WorkflowRunLead } from "@ithaca/shared";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -12,7 +12,6 @@ import { WorkflowStatusText } from "./WorkflowStatusText";
 
 type WorkflowLeadTableProps = {
   leads: WorkflowRunLead[];
-  summaries: LeadSummary[];
   emptyMessage?: string;
 };
 
@@ -26,7 +25,6 @@ const headerCellSx = {
 
 export function WorkflowLeadTable({
   leads,
-  summaries,
   emptyMessage = "No leads in this run.",
 }: WorkflowLeadTableProps): ReactElement {
   if (leads.length === 0) {
@@ -38,8 +36,6 @@ export function WorkflowLeadTable({
       </Paper>
     );
   }
-
-  const byId = new Map(summaries.map((lead) => [lead.leadId, lead]));
 
   return (
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
@@ -54,11 +50,10 @@ export function WorkflowLeadTable({
         </TableHead>
         <TableBody>
           {leads.map((lead) => {
-            const summary = byId.get(lead.leadId);
             return (
               <TableRow key={lead.leadId}>
                 <TableCell>
-                  {summary?.companyName ?? lead.leadId}
+                  {lead.companyName}
                   {lead.errorMessage ? (
                     <Typography
                       variant="caption"
@@ -69,9 +64,7 @@ export function WorkflowLeadTable({
                     </Typography>
                   ) : null}
                 </TableCell>
-                <TableCell>
-                  {summary ? workflowLabel(summary.sourceType) : "—"}
-                </TableCell>
+                <TableCell>{workflowLabel(lead.sourceType)}</TableCell>
                 <TableCell>
                   <WorkflowStatusText status={lead.currentStage} />
                 </TableCell>

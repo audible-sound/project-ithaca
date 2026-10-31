@@ -92,6 +92,7 @@ export const leads = pgTable(
     lifecycleStatus: text("lifecycle_status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     check(

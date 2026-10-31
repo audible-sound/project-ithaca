@@ -14,6 +14,9 @@ export {
   leadPriorities,
 } from "./leads.js";
 export type {
+  CreateLeadRequest,
+  CreateLeadResponse,
+  DeleteLeadResponse,
   LeadContactDetail,
   LeadDetail,
   LeadFollowUpDetail,
@@ -32,6 +35,9 @@ export type {
   LeadSummaryDetail,
   ListLeadListResponse,
   ListLeadsResponse,
+  ManualLeadInput,
+  UpdateLeadRequest,
+  UpdateLeadResponse,
 } from "./leads.js";
 export type {
   CreateIdealCustomerProfileRequest,

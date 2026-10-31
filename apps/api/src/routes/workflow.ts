@@ -11,7 +11,7 @@ import {
 } from "@ithaca/db";
 import type {
   WorkflowRun as WorkflowRunRow,
-  WorkflowRunLead as WorkflowRunLeadRow,
+  WorkflowRunLeadListRow,
   WorkflowStep as WorkflowStepRow,
 } from "@ithaca/db";
 import { runLeadWorkflow } from "@ithaca/orchestrator";
@@ -118,9 +118,19 @@ function mapStep(row: WorkflowStepRow): WorkflowStep {
   };
 }
 
-function mapRunLead(row: WorkflowRunLeadRow): WorkflowRunLead {
+function leadSourceType(value: string): "manual" | "identified" {
+  if (value === "manual" || value === "identified") {
+    return value;
+  }
+
+  throw new Error(`Unexpected lead source type "${value}".`);
+}
+
+function mapRunLead(row: WorkflowRunLeadListRow): WorkflowRunLead {
   return {
     leadId: row.leadId,
+    companyName: row.companyName,
+    sourceType: leadSourceType(row.sourceType),
     currentStage: workflowStage(row.currentStage),
     status: workflowLeadStatus(row.status),
     errorMessage: row.errorMessage,

@@ -8,6 +8,7 @@ import { IcpDetailPage } from "./features/icp/IcpDetailPage";
 import { IcpFormPage } from "./features/icp/IcpFormPage";
 import { IcpPage } from "./features/icp/IcpPage";
 import { LeadDetailPage } from "./features/leads/LeadDetailPage";
+import { LeadFormPage } from "./features/leads/LeadFormPage";
 import { LeadsPage } from "./features/leads/LeadsPage";
 import { WorkflowFormPage } from "./features/workflow/WorkflowFormPage";
 import { WorkflowPage } from "./features/workflow/WorkflowPage";
@@ -25,6 +26,8 @@ export function App(): ReactElement {
             <Route element={<AppLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/leads" element={<LeadsPage />} />
+              <Route path="/leads/new" element={<LeadFormPage />} />
+              <Route path="/leads/:leadId/edit" element={<LeadFormPage />} />
               <Route path="/leads/:leadId" element={<LeadDetailPage />} />
               <Route path="/icp" element={<IcpPage />} />
               <Route path="/icp/new" element={<IcpFormPage />} />

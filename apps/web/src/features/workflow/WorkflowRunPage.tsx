@@ -26,8 +26,6 @@ export function WorkflowRunPage(): ReactElement {
   const runStatus = useWorkflowStore((state) => state.runStatus);
   const runMessage = useWorkflowStore((state) => state.runMessage);
   const loadRun = useWorkflowStore((state) => state.loadRun);
-  const leads = useWorkflowStore((state) => state.leads);
-  const loadLeads = useWorkflowStore((state) => state.loadLeads);
 
   const visibleRun =
     run && workflowRunId && run.workflowRunId === workflowRunId ? run : null;
@@ -38,9 +36,8 @@ export function WorkflowRunPage(): ReactElement {
     }
 
     void loadRun(workflowRunId);
-    void loadLeads();
     void loadProfiles();
-  }, [workflowRunId, loadRun, loadLeads, loadProfiles]);
+  }, [workflowRunId, loadRun, loadProfiles]);
 
   useEffect(() => {
     if (!workflowRunId || !visibleRun) {
@@ -53,13 +50,12 @@ export function WorkflowRunPage(): ReactElement {
 
     const timer = window.setInterval(() => {
       void loadRun(workflowRunId);
-      void loadLeads();
     }, 2000);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [workflowRunId, visibleRun, loadRun, loadLeads]);
+  }, [workflowRunId, visibleRun, loadRun]);
 
   const profileName = visibleRun
     ? (profiles.find((profile) => profile.icpId === visibleRun.icpId)?.name ??
@@ -101,7 +97,6 @@ export function WorkflowRunPage(): ReactElement {
             <Typography variant="h6">Leads in this run</Typography>
             <WorkflowLeadTable
               leads={visibleRun.leads}
-              summaries={leads}
               emptyMessage={
                 searchReturnedNoCompanies(visibleRun)
                   ? noMatchingCompaniesMessage

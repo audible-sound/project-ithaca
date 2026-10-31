@@ -40,6 +40,7 @@ authRouter.post("/login", async (req, res) => {
       message: "Signed in.",
       token,
       name: user.fullName,
+      userId: user.userId,
     };
     res.status(200).json(response);
   } catch (err) {

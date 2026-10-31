@@ -14,3 +14,15 @@ const leadListStageLabels: Record<LeadListStage, string> = {
 export function leadStageLabel(stage: LeadListStage): string {
   return leadListStageLabels[stage];
 }
+
+export const companySizeBands = [
+  "1-10",
+  "11-50",
+  "51-200",
+  "201-1000",
+  "1000+",
+] as const;
+
+export function companySizeLabel(band: string): string {
+  return `${band} employees`;
+}
