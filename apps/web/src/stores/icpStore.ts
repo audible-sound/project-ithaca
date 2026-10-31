@@ -34,8 +34,12 @@ type IcpStore = {
   profiles: IdealCustomerProfile[];
   listStatus: RequestStatus;
   listMessage: string | null;
-  createProfile: (values: IcpFormValues) => Promise<void>;
+  profile: IdealCustomerProfile | null;
+  detailStatus: RequestStatus;
+  detailMessage: string | null;
+  createProfile: (values: IcpFormValues) => Promise<boolean>;
   loadProfiles: () => Promise<void>;
+  loadProfile: (icpId: string) => Promise<void>;
 };
 
 const maxCompanySize = 2_147_483_647;
@@ -98,12 +102,57 @@ function withNumber(
   }
 }
 
-export const useIcpStore = create<IcpStore>()((set) => ({
+export const useIcpStore = create<IcpStore>()((set, get) => ({
   message: null,
   status: "idle",
   profiles: [],
   listStatus: "idle",
   listMessage: null,
+  profile: null,
+  detailStatus: "idle",
+  detailMessage: null,
+  loadProfile: async (icpId) => {
+    const token = authToken();
+    if (!token) {
+      set({
+        profile: null,
+        detailStatus: "error",
+        detailMessage: "Authentication required.",
+      });
+      return;
+    }
+
+    const sameProfile = get().profile?.icpId === icpId;
+    if (!sameProfile) {
+      set({ profile: null, detailStatus: "loading", detailMessage: null });
+    }
+
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${icpId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJson<IdealCustomerProfile & { message?: string }>(
+        res,
+      );
+      if (!res.ok || !("icpId" in data) || !data.icpId) {
+        set({
+          profile: sameProfile ? get().profile : null,
+          detailMessage: data.message ?? "Failed to reach API",
+          detailStatus: "error",
+        });
+        return;
+      }
+
+      set({ profile: data, detailStatus: "ready", detailMessage: null });
+    } catch (err) {
+      set({
+        profile: sameProfile ? get().profile : null,
+        detailMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+        detailStatus: "error",
+      });
+    }
+  },
   loadProfiles: async () => {
     const token = authToken();
     if (!token) {
@@ -144,7 +193,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
     const name = values.name.trim();
     if (!name) {
       set({ status: "error", message: "Name is required." });
-      return;
+      return false;
     }
 
     const companySizeMin = readWholeNumber(values.companySizeMin);
@@ -154,7 +203,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         status: "error",
         message: "Company size must be a whole number.",
       });
-      return;
+      return false;
     }
 
     if (
@@ -165,7 +214,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         status: "error",
         message: "Company size cannot exceed 2,147,483,647.",
       });
-      return;
+      return false;
     }
 
     if (
@@ -177,14 +226,14 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         status: "error",
         message: "Company size minimum cannot exceed the maximum.",
       });
-      return;
+      return false;
     }
 
     const budgetMin = readWholeNumber(values.budgetMin);
     const budgetMax = readWholeNumber(values.budgetMax);
     if (budgetMin === "invalid" || budgetMax === "invalid") {
       set({ status: "error", message: "Budget must be a whole number." });
-      return;
+      return false;
     }
 
     if (
@@ -196,7 +245,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         status: "error",
         message: "Budget minimum cannot exceed the maximum.",
       });
-      return;
+      return false;
     }
 
     const industries = splitList(values.industriesInclude);
@@ -206,7 +255,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         status: "error",
         message: "An industry cannot be both included and excluded.",
       });
-      return;
+      return false;
     }
 
     const country = values.country.trim();
@@ -222,7 +271,7 @@ export const useIcpStore = create<IcpStore>()((set) => ({
     );
     if (currencyMessage) {
       set({ status: "error", message: currencyMessage });
-      return;
+      return false;
     }
 
     if ((region || city) && !country) {
@@ -230,13 +279,13 @@ export const useIcpStore = create<IcpStore>()((set) => ({
         status: "error",
         message: "Country is required when a region or city is set.",
       });
-      return;
+      return false;
     }
 
     const token = authToken();
     if (!token) {
       set({ status: "error", message: "Authentication required." });
-      return;
+      return false;
     }
 
     const body: CreateIdealCustomerProfileRequest = {
@@ -278,17 +327,19 @@ export const useIcpStore = create<IcpStore>()((set) => ({
           message: data.message ?? "Failed to reach API",
           status: "error",
         });
-        return;
+        return false;
       }
       set({
-        message: data.message ?? null,
-        status: "ready",
+        message: null,
+        status: "idle",
       });
+      return true;
     } catch (err) {
       set({
         message: err instanceof Error ? err.message : "Failed to reach API",
         status: "error",
       });
+      return false;
     }
   },
 }));

@@ -10,6 +10,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useState, type ReactElement, type SubmitEvent } from "react";
+import { useNavigate } from "react-router";
 import { useIcpStore, type IcpFormValues } from "../../stores/icpStore";
 
 const emptyProfile: IcpFormValues = {
@@ -40,6 +41,7 @@ const fieldGrid = {
 } as const;
 
 export function IcpFormPage(): ReactElement {
+  const navigate = useNavigate();
   const message = useIcpStore((state) => state.message);
   const status = useIcpStore((state) => state.status);
   const createProfile = useIcpStore((state) => state.createProfile);
@@ -51,7 +53,11 @@ export function IcpFormPage(): ReactElement {
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault();
-    void createProfile(values);
+    void createProfile(values).then((created) => {
+      if (created) {
+        navigate("/icp");
+      }
+    });
   }
 
   return (

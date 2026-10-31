@@ -7,42 +7,24 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
+import { Link } from "react-router";
 import type { RequestStatus } from "../../../stores/api";
+import {
+  companySizeText,
+  industriesText,
+  locationText,
+} from "../icpLabels";
 
 type IcpTableProps = {
   profiles: IdealCustomerProfile[];
   status: RequestStatus;
 };
 
-function industriesText(profile: IdealCustomerProfile): string {
-  return profile.industries.length > 0
-    ? profile.industries.join(", ")
-    : "Unrestricted";
-}
-
-function locationText(profile: IdealCustomerProfile): string {
-  const parts = [profile.country, profile.region, profile.city].filter(
-    (part) => part.length > 0,
-  );
-  return parts.length > 0 ? parts.join(", ") : "Unrestricted";
-}
-
-function companySizeText(profile: IdealCustomerProfile): string {
-  const { companySizeMin, companySizeMax } = profile;
-  if (companySizeMin !== null && companySizeMax !== null) {
-    return `${companySizeMin}–${companySizeMax}`;
-  }
-
-  if (companySizeMin !== null) {
-    return `At least ${companySizeMin}`;
-  }
-
-  if (companySizeMax !== null) {
-    return `At most ${companySizeMax}`;
-  }
-
-  return "Unrestricted";
-}
+const nameLinkSx = {
+  color: "primary.main",
+  textDecoration: "none",
+  "&:hover": { textDecoration: "underline" },
+} as const;
 
 export function IcpTable({
   profiles,
@@ -82,7 +64,16 @@ export function IcpTable({
           <TableBody>
             {profiles.map((profile) => (
               <TableRow key={profile.icpId}>
-                <TableCell>{profile.name}</TableCell>
+                <TableCell>
+                  <Typography
+                    variant="body2"
+                    component={Link}
+                    to={`/icp/${profile.icpId}`}
+                    sx={nameLinkSx}
+                  >
+                    {profile.name}
+                  </Typography>
+                </TableCell>
                 <TableCell>{industriesText(profile)}</TableCell>
                 <TableCell>{locationText(profile)}</TableCell>
                 <TableCell>{companySizeText(profile)}</TableCell>
