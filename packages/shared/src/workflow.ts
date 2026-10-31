@@ -105,6 +105,22 @@ export const qualificationFitLabels = [
 ] as const;
 export type QualificationFitLabel = (typeof qualificationFitLabels)[number];
 
+/** Priority and fit for a suitability score from 0 to 100. */
+export function qualificationLabelsForScore(score: number): {
+  priorityLabel: LeadPriority;
+  fitLabel: QualificationFitLabel;
+} {
+  if (score >= 70) {
+    return { priorityLabel: "high", fitLabel: "Strong fit" };
+  }
+
+  if (score >= 40) {
+    return { priorityLabel: "medium", fitLabel: "Partial fit" };
+  }
+
+  return { priorityLabel: "low", fitLabel: "Weak fit" };
+}
+
 /** Suitability score for one lead. `isUserOverride` stays false for agent output. */
 export interface WorkflowLeadQualification {
   leadId: string;

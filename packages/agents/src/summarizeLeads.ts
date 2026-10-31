@@ -5,7 +5,6 @@ import type {
   IdealCustomerProfileInput,
   WorkflowLeadContact,
   WorkflowLeadContext,
-  WorkflowLeadQualification,
   WorkflowLeadSummary,
 } from "@ithaca/shared";
 
@@ -21,6 +20,8 @@ const summarySystem = [
   "gap states what is missing or weak.",
   "nextStep states the recommended sales action.",
   "leadId must be the lead id from the prompt.",
+  "The agent explanation is how the score was measured, and the user reason is why a person replaced that score.",
+  "The report must keep those as separate facts and must not treat the user reason as the agent's measurement.",
 ].join(" ");
 
 const summaryResponseSchema = {
@@ -46,6 +47,21 @@ const summaryResponseSchema = {
 type SummarizeGenerate = (
   request: JsonModelRequest,
 ) => Promise<JsonModelResponse>;
+
+/**
+ * Qualification facts the summary reads.
+ * The user reason is separate from the agent's measurement.
+ */
+export type SummarizeLeadQualification = {
+  leadId: string;
+  score: number;
+  fitLabel: string;
+  evidence: string[];
+  /** How the agent measured the score. */
+  agentExplanation: string;
+  /** Why a person replaced the score. Null when they did not write one. */
+  userReason: string | null;
+};
 
 function textOrNone(value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
@@ -75,7 +91,7 @@ function contactText(contact: WorkflowLeadContact | undefined): string {
 function summaryPrompt(
   icp: IdealCustomerProfileInput,
   lead: WorkflowLeadContext,
-  qualification: WorkflowLeadQualification,
+  qualification: SummarizeLeadQualification,
 ): string {
   return [
     `Lead id: ${lead.leadId}`,
@@ -88,7 +104,8 @@ function summaryPrompt(
     `Contact: ${contactText(lead.contact)}`,
     `Suitability score: ${qualification.score}`,
     `Fit: ${qualification.fitLabel}`,
-    `Explanation: ${qualification.explanation}`,
+    `Agent explanation: ${textOrNone(qualification.agentExplanation)}`,
+    `User reason: ${textOrNone(qualification.userReason ?? undefined)}`,
     `Evidence: ${joined(qualification.evidence)}`,
     `Ideal customer profile: ${icp.name}`,
   ].join("\n");
@@ -143,7 +160,7 @@ function parseSummary(leadId: string, text: string): WorkflowLeadSummary {
 export async function summarizeLeads(
   icp: IdealCustomerProfileInput,
   leads: readonly WorkflowLeadContext[],
-  qualifications: readonly WorkflowLeadQualification[],
+  qualifications: readonly SummarizeLeadQualification[],
   generate: SummarizeGenerate = generateJson,
 ): Promise<AgentStageResult> {
   if (leads.length === 0) {

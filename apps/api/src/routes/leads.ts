@@ -8,6 +8,7 @@ import {
   listSourceReferencesByLeadId,
   listWorkflowRunLeadsByLeadId,
   updateLeadFacts,
+  updateLeadQualificationOverride,
 } from "@ithaca/db";
 import type {
   CreateLeadResponse,
@@ -15,8 +16,10 @@ import type {
   LeadDetail,
   ListLeadListResponse,
   ListLeadsResponse,
+  OverrideLeadQualificationResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
+import { qualificationLabelsForScore } from "@ithaca/shared";
 import { Router } from "express";
 import { sendFailure, signedInUserId } from "../lib/http.js";
 import {
@@ -24,7 +27,10 @@ import {
   leadDeletedMessage,
   leadStoredMessage,
   leadUpdatedMessage,
+  qualificationMissingMessage,
+  qualificationOverriddenMessage,
   readManualLead,
+  readQualificationOverride,
 } from "../lib/leadInput.js";
 import { mapLead, mapLeadDetail, mapLeadListItem } from "../lib/mapLead.js";
 import { asRecord, isUuid } from "../lib/parse.js";
@@ -155,6 +161,57 @@ leadsRouter.put("/:leadId", async (req, res) => {
 
     const response: UpdateLeadResponse = {
       message: leadUpdatedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Replace the suitability score on a qualification owned by the signed-in user.
+leadsRouter.put("/:leadId/qualification", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  const override = readQualificationOverride(asRecord(req.body));
+  if ("message" in override) {
+    res.status(400).json(override);
+    return;
+  }
+
+  try {
+    const labels = qualificationLabelsForScore(override.score);
+    const result = await updateLeadQualificationOverride(leadId, userId, {
+      score: override.score,
+      priorityLabel: labels.priorityLabel,
+      fitLabel: labels.fitLabel,
+      reason: override.reason,
+    });
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result === "not_qualified") {
+      res.status(409).json({ message: qualificationMissingMessage });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Qualification was not overridden.");
+    }
+
+    const response: OverrideLeadQualificationResponse = {
+      message: qualificationOverriddenMessage,
       lead,
     };
     res.status(200).json(response);

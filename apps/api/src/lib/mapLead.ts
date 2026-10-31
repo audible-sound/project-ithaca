@@ -397,6 +397,7 @@ export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
     sourceType: leadSourceType(row.sourceType),
     score,
     priority: leadPriority(row.priorityLabel),
+    qualificationOverridden: row.qualificationOverridden ?? false,
     stage: leadListStageFrom(row.lifecycleStatus, row.latestStage),
     followUpDue: isFollowUpDue(row.lifecycleStatus, row.followUpDueAt),
     icps: row.icps,
@@ -421,6 +422,15 @@ export function mapLeadDetail(input: {
   if (row.qualificationScore !== null) {
     const parsed = Number(row.qualificationScore);
     score = Number.isNaN(parsed) ? null : parsed;
+  }
+
+  let agentScore: number | null = null;
+  if (row.qualificationAgentScore !== null) {
+    const parsed = Number(row.qualificationAgentScore);
+    agentScore = Number.isNaN(parsed) ? null : parsed;
+  }
+  if (agentScore === null && row.qualificationIsUserOverride !== true) {
+    agentScore = score;
   }
 
   // A score, priority, fit label, explanation, or a hand edit all count as qualified.
@@ -480,12 +490,15 @@ export function mapLeadDetail(input: {
     qualification: hasQualification
       ? {
           score,
+          agentScore,
           priority: leadPriority(row.qualificationPriorityLabel),
           fitLabel: row.qualificationFitLabel,
           explanation: row.qualificationExplanation,
           criteria: parseCriteria(row.qualificationCriteriaBreakdown),
           evidence: parseEvidence(row.qualificationEvidence),
           isUserOverride: row.qualificationIsUserOverride ?? false,
+          overrideReason: row.qualificationOverrideReason,
+          overriddenAt: toIso(row.qualificationOverriddenAt),
         }
       : null,
     summary: hasSummary

@@ -6,10 +6,13 @@ import Divider from "@mui/material/Divider";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import type { ReactElement } from "react";
-import { formatDate } from "../../../utils/date";
+import { useState, type ReactElement } from "react";
+import { useAuthStore } from "../../../stores/authStore";
+import { useLeadStore } from "../../../stores/leadStore";
+import { formatDate, formatDateTime } from "../../../utils/date";
 import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
+import { QualificationOverrideDialog } from "./QualificationOverrideDialog";
 
 type LeadPipelineProps = {
   lead: LeadDetail;
@@ -50,11 +53,31 @@ function sourceProviderLabel(provider: string): string {
 }
 
 export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
+  const userId = useAuthStore((state) => state.userId);
+  const overrideMessage = useLeadStore((state) => state.overrideMessage);
+  const overrideQualification = useLeadStore(
+    (state) => state.overrideQualification,
+  );
+  const clearOverride = useLeadStore((state) => state.clearOverride);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const canOverride =
+    lead.ownerId !== null && lead.ownerId === userId && lead.qualification !== null;
   const order = new Map(leadPipelineStages.map((stage, index) => [stage, index]));
   const stages = [...lead.pipeline].sort(
     (a, b) => (order.get(a.stage) ?? 0) - (order.get(b.stage) ?? 0),
   );
   const firstSource = lead.sources[0] ?? null;
+  const overriddenAt = formatDateTime(lead.qualification?.overriddenAt ?? null);
+
+  async function onSaveOverride(score: unknown, reason: string): Promise<void> {
+    setSavingOverride(true);
+    const saved = await overrideQualification(lead.leadId, score, reason);
+    setSavingOverride(false);
+    if (saved) {
+      setOverrideOpen(false);
+    }
+  }
 
   return (
     <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: "divider" }}>
@@ -104,7 +127,27 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                           ? ` · ${lead.qualification.fitLabel}`
                           : ""}
                       </Typography>
-                      {lead.qualification.explanation ? (
+                      {lead.qualification.isUserOverride ? (
+                        <>
+                          <Typography variant="body2" color="text.secondary">
+                            Overridden{overriddenAt ? ` ${overriddenAt}` : ""}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Agent score {lead.qualification.agentScore ?? "—"}
+                          </Typography>
+                          {lead.qualification.overrideReason ? (
+                            <Typography variant="body2" color="text.secondary">
+                              Your reason: {lead.qualification.overrideReason}
+                            </Typography>
+                          ) : null}
+                          {lead.qualification.explanation ? (
+                            <Typography variant="body2" color="text.secondary">
+                              Agent explanation:{" "}
+                              {lead.qualification.explanation}
+                            </Typography>
+                          ) : null}
+                        </>
+                      ) : lead.qualification.explanation ? (
                         <Typography variant="body2" color="text.secondary">
                           {lead.qualification.explanation}
                         </Typography>
@@ -128,7 +171,14 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                         </Typography>
                       ))}
                       <Box>
-                        <Button size="small" disabled>
+                        <Button
+                          size="small"
+                          disabled={!canOverride}
+                          onClick={() => {
+                            clearOverride();
+                            setOverrideOpen(true);
+                          }}
+                        >
                           Edit result
                         </Button>
                       </Box>
@@ -275,6 +325,23 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
           ))}
         </Stack>
       </Stack>
+      <QualificationOverrideDialog
+        open={overrideOpen}
+        score={lead.qualification?.score ?? null}
+        reason={lead.qualification?.overrideReason ?? null}
+        saving={savingOverride}
+        message={overrideMessage}
+        onCancel={() => {
+          if (!savingOverride) {
+            clearOverride();
+            setOverrideOpen(false);
+          }
+        }}
+        onClearMessage={clearOverride}
+        onSave={(score, reason) => {
+          void onSaveOverride(score, reason);
+        }}
+      />
     </Paper>
   );
 }

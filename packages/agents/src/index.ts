@@ -5,3 +5,4 @@ export type { AttachedCompanyContact, CompanyContactClients } from "./identifyLe
 export { qualifyLeads, rankLeads } from "./qualifyLeads.js";
 export type { RankLeadsResult, RankedLeadScore } from "./qualifyLeads.js";
 export { summarizeLeads } from "./summarizeLeads.js";
+export type { SummarizeLeadQualification } from "./summarizeLeads.js";

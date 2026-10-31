@@ -181,7 +181,18 @@ export function LeadTable({
                   <TableCell>{icpLabel(lead)}</TableCell>
                   <TableCell>{lead.contactName ?? "—"}</TableCell>
                   <TableCell>{sourceLabel(lead)}</TableCell>
-                  <TableCell>{lead.score ?? "—"}</TableCell>
+                  <TableCell>
+                    {lead.score ?? "—"}
+                    {lead.qualificationOverridden ? (
+                      <Typography
+                        variant="caption"
+                        component="div"
+                        sx={{ color: "text.secondary" }}
+                      >
+                        Overridden
+                      </Typography>
+                    ) : null}
+                  </TableCell>
                   <TableCell>{priorityLabel(lead)}</TableCell>
                   <TableCell>{leadStageLabel(lead.stage)}</TableCell>
                   <TableCell>

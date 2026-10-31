@@ -51,9 +51,11 @@ export interface LeadListItem {
   /** Primary contact. Null until a contact is known. */
   contactName: string | null;
   sourceType: "manual" | "identified";
-  /** Qualification score. Null until the lead is qualified. */
+  /** Qualification score. Null until the lead is qualified. An override replaces the agent score. */
   score: number | null;
   priority: LeadPriority | null;
+  /** True when a person replaced the agent suitability score. */
+  qualificationOverridden: boolean;
   stage: LeadListStage;
   /** True when a reply is overdue or the lead is marked as needing follow-up. */
   followUpDue: boolean;
@@ -130,14 +132,22 @@ export interface LeadQualificationCriterion {
  * Null on `LeadDetail` until qualification exists.
  */
 export interface LeadQualificationDetail {
+  /** Score used for ranking. The override score when a person has replaced the agent score. */
   score: number | null;
+  /** Agent score. Same as `score` until a person overrides it. */
+  agentScore: number | null;
   priority: LeadPriority | null;
   fitLabel: string | null;
+  /** Agent explanation. A score override does not replace it. */
   explanation: string | null;
   criteria: LeadQualificationCriterion[];
   evidence: string[];
-  /** True when a person edited the agent's qualification. */
+  /** True when a person replaced the agent suitability score. */
   isUserOverride: boolean;
+  /** Why a person replaced the agent score. Null when they did not write one. */
+  overrideReason: string | null;
+  /** ISO time of the override. Null until a person overrides the score. */
+  overriddenAt: string | null;
 }
 
 /**
@@ -252,4 +262,17 @@ export interface UpdateLeadResponse {
 /** Body of a successful `DELETE /leads/:leadId`. */
 export interface DeleteLeadResponse {
   message: string;
+}
+
+/** Body of `PUT /leads/:leadId/qualification`. */
+export interface OverrideLeadQualificationRequest {
+  score: number;
+  /** Why the score is being replaced. Omit or leave blank to store none. */
+  reason?: string;
+}
+
+/** Body of a successful `PUT /leads/:leadId/qualification`. */
+export interface OverrideLeadQualificationResponse {
+  message: string;
+  lead: LeadDetail;
 }

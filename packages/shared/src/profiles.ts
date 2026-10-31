@@ -7,6 +7,13 @@ export interface IdealCustomerProfileInput {
   companySizeMin?: number;
   companySizeMax?: number;
   businessNeedKeywords?: string[];
+  /** Spend limit used only when qualifying a lead. Omitted when unrestricted. */
+  budgetCurrency?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  budgetNotes?: string;
+  /** Need statement used only when qualifying a lead. Omitted when unrestricted. */
+  businessNeedDescription?: string;
   outreachTone?: string;
   messageConstraints?: string;
 }
@@ -16,11 +23,6 @@ export interface CreateIdealCustomerProfileRequest extends IdealCustomerProfileI
   country?: string;
   region?: string;
   city?: string;
-  budgetCurrency?: string;
-  budgetMin?: number;
-  budgetMax?: number;
-  budgetNotes?: string;
-  businessNeedDescription?: string;
 }
 
 export interface IdealCustomerProfile {

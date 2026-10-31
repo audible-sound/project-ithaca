@@ -4,11 +4,13 @@ import {
   qualifyLeads,
   summarizeLeads,
 } from "@ithaca/agents";
+import type { SummarizeLeadQualification } from "@ithaca/agents";
 import {
   insertIdentifiedLead,
   insertTokenUsage,
   insertWorkflowRunLeads,
   listLeadContextsByIds,
+  listLeadQualificationsByLeadIds,
   listWorkflowRunLeadsByRunId,
   listWorkflowStepsByRunId,
   updateWorkflowRunLeadStatus,
@@ -22,6 +24,7 @@ import type {
   InsertIdentifiedLeadResult,
   LeadQualificationDraft,
   LeadSummaryDraft,
+  StoredLeadQualification,
   TokenUsageDraft,
   WorkflowRunLead as WorkflowRunLeadRow,
   WorkflowRunLeadDraft,
@@ -79,6 +82,9 @@ type WorkflowPersistence = {
   ) => Promise<WorkflowRunLeadRow[]>;
   insertTokenUsage: (draft: TokenUsageDraft) => Promise<void>;
   listLeadContexts: (leadIds: string[]) => Promise<WorkflowLeadContext[]>;
+  listLeadQualifications: (
+    leadIds: string[],
+  ) => Promise<StoredLeadQualification[]>;
   upsertLeadQualification: (draft: LeadQualificationDraft) => Promise<void>;
   upsertLeadSummary: (draft: LeadSummaryDraft) => Promise<void>;
 };
@@ -115,6 +121,7 @@ const defaultPersistence: WorkflowPersistence = {
     await insertTokenUsage(draft);
   },
   listLeadContexts: listLeadContextsByIds,
+  listLeadQualifications: listLeadQualificationsByLeadIds,
   upsertLeadQualification,
   upsertLeadSummary,
 };
@@ -165,6 +172,7 @@ async function runPersisted(
   const steps = await persistence.listSteps(workflowRunId);
   let leads = await persistence.listRunLeads(workflowRunId);
   let qualifications: WorkflowLeadQualification[] = [];
+  let storedQualifications: StoredLeadQualification[] = [];
   const stages: AgentStageResult[] = [];
 
   // Identify, qualify, summarize, and draft run in that order. A failure stops here.
@@ -237,7 +245,15 @@ async function runPersisted(
         const contexts = await persistence.listLeadContexts(
           leads.map((lead) => lead.leadId),
         );
-        result = await summarizeLeads(icp, contexts, qualifications);
+        result = await summarizeLeads(
+          icp,
+          contexts,
+          summaryQualifications(
+            contexts.map((lead) => lead.leadId),
+            qualifications,
+            storedQualifications,
+          ),
+        );
       } else {
         result = await agents[stepType](icp);
       }
@@ -373,6 +389,10 @@ async function runPersisted(
           });
         }
 
+        storedQualifications = await persistence.listLeadQualifications(
+          leads.map((lead) => lead.leadId),
+        );
+
         if (result.usage !== undefined) {
           await persistence.insertTokenUsage({
             workflowRunId,
@@ -492,6 +512,90 @@ async function runPersisted(
   });
 
   return { status: "completed", stages };
+}
+
+function evidenceLines(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const evidence: string[] = [];
+  for (const item of value) {
+    if (typeof item === "string" && item.trim().length > 0) {
+      evidence.push(item.trim());
+    }
+  }
+
+  return evidence;
+}
+
+function storedScore(row: StoredLeadQualification): number {
+  if (row.score === null) {
+    throw new Error(
+      `Lead ${row.leadId} stored qualification score is missing.`,
+    );
+  }
+
+  const score = Number(row.score);
+  if (!Number.isFinite(score)) {
+    throw new Error(
+      `Lead ${row.leadId} stored qualification score is missing.`,
+    );
+  }
+
+  return score;
+}
+
+function storedAgentExplanation(row: StoredLeadQualification): string {
+  const agentExplanation = row.agentExplanation?.trim() ?? "";
+  if (agentExplanation.length > 0) {
+    return agentExplanation;
+  }
+
+  return row.explanation?.trim() ?? "";
+}
+
+/**
+ * Chooses the score and the two explanations summarize should read.
+ * An overridden row uses the stored score and the stored agent explanation.
+ * The qualify output from this run was not saved for that lead, so it is not described.
+ * A row that was not overridden uses this run's qualification and no user reason.
+ */
+function summaryQualifications(
+  leadIds: readonly string[],
+  fresh: readonly WorkflowLeadQualification[],
+  stored: readonly StoredLeadQualification[],
+): SummarizeLeadQualification[] {
+  const freshById = new Map(fresh.map((item) => [item.leadId, item]));
+  const storedById = new Map(stored.map((item) => [item.leadId, item]));
+
+  return leadIds.map((leadId) => {
+    const storedRow = storedById.get(leadId);
+    if (storedRow?.isUserOverride === true) {
+      return {
+        leadId,
+        score: storedScore(storedRow),
+        fitLabel: storedRow.fitLabel?.trim() ?? "",
+        evidence: evidenceLines(storedRow.evidence),
+        agentExplanation: storedAgentExplanation(storedRow),
+        userReason: storedRow.overrideReason,
+      };
+    }
+
+    const qualification = freshById.get(leadId);
+    if (qualification === undefined) {
+      throw new Error(`Lead ${leadId} has no qualification.`);
+    }
+
+    return {
+      leadId,
+      score: qualification.score,
+      fitLabel: qualification.fitLabel,
+      evidence: qualification.evidence,
+      agentExplanation: qualification.explanation,
+      userReason: null,
+    };
+  });
 }
 
 type LeadUpdateResult =

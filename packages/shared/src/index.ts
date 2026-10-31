@@ -1,5 +1,6 @@
 export {
   qualificationFitLabels,
+  qualificationLabelsForScore,
   workflowLeadStatuses,
   workflowRunStatuses,
   workflowStages,
@@ -30,6 +31,8 @@ export type {
   LeadPriority,
   LeadQualificationCriterion,
   LeadQualificationDetail,
+  OverrideLeadQualificationRequest,
+  OverrideLeadQualificationResponse,
   LeadSource,
   LeadSummary,
   LeadSummaryDetail,

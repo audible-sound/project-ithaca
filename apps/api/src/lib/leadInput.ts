@@ -3,13 +3,19 @@ import {
   type CompanySizeBand,
   type ManualLeadFacts,
 } from "@ithaca/db";
-import { readOptionalText, readText } from "./parse.js";
+import { readOptionalText, readText, readWholeNumber } from "./parse.js";
 
 const emailAddress = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const leadStoredMessage = "Lead stored from manual entry.";
 export const leadUpdatedMessage = "Lead updated.";
 export const leadDeletedMessage = "Lead deleted.";
+export const qualificationOverriddenMessage = "Qualification overridden.";
+export const qualificationScoreMessage =
+  "Suitability score must be a whole number from 0 to 100.";
+export const qualificationMissingMessage =
+  "Lead has no qualification to override.";
+export const qualificationReasonMessage = "Override reason must be text.";
 
 function emailMessage(value: string | null, message: string): string | null {
   if (value === null || emailAddress.test(value)) {
@@ -54,6 +60,52 @@ export function isManualLeadError(
   value: ManualLeadFacts | { message: string },
 ): value is { message: string } {
   return "message" in value;
+}
+
+/** Reads a suitability override. Returns the score, or the error for a value outside 0 to 100. */
+export function readQualificationScore(
+  body: Record<string, unknown>,
+): number | { message: string } {
+  const parsed = readWholeNumber(body.score);
+  if (
+    parsed === "absent" ||
+    parsed === null ||
+    parsed === "invalid" ||
+    parsed > 100
+  ) {
+    return { message: qualificationScoreMessage };
+  }
+
+  return parsed;
+}
+
+export type QualificationOverrideInput = {
+  score: number;
+  reason: string | null;
+};
+
+/**
+ * Reads a suitability override and an optional reason.
+ * A missing or blank reason is stored as none. Any other non-text reason is rejected.
+ */
+export function readQualificationOverride(
+  body: Record<string, unknown>,
+): QualificationOverrideInput | { message: string } {
+  const score = readQualificationScore(body);
+  if (typeof score !== "number") {
+    return score;
+  }
+
+  if (
+    "reason" in body &&
+    body.reason !== undefined &&
+    typeof body.reason !== "string"
+  ) {
+    return { message: qualificationReasonMessage };
+  }
+
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  return { score, reason: reason.length > 0 ? reason : null };
 }
 
 /** Reads and checks a manual lead body. Returns the facts, or the first error. */

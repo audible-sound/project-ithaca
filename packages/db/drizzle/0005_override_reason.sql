@@ -1,0 +1,1 @@
+ALTER TABLE "lead_qualifications" ADD COLUMN "override_reason" text;

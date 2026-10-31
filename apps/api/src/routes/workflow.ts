@@ -163,6 +163,29 @@ function toWorkflowIcp(profile: IdealCustomerProfile): IdealCustomerProfileInput
     icp.messageConstraints = profile.messageConstraints;
   }
 
+  const budgetCurrency = profile.budgetCurrency.trim();
+  if (budgetCurrency.length > 0) {
+    icp.budgetCurrency = budgetCurrency;
+  }
+
+  if (profile.budgetMin !== null) {
+    icp.budgetMin = profile.budgetMin;
+  }
+
+  if (profile.budgetMax !== null) {
+    icp.budgetMax = profile.budgetMax;
+  }
+
+  const budgetNotes = profile.budgetNotes.trim();
+  if (budgetNotes.length > 0) {
+    icp.budgetNotes = budgetNotes;
+  }
+
+  const businessNeedDescription = profile.businessNeedDescription.trim();
+  if (businessNeedDescription.length > 0) {
+    icp.businessNeedDescription = businessNeedDescription;
+  }
+
   return icp;
 }
 

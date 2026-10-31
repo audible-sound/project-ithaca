@@ -5,6 +5,7 @@ import type {
   LeadDetail,
   LeadListItem,
   ListLeadListResponse,
+  OverrideLeadQualificationResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
@@ -165,12 +166,19 @@ type LeadStore = {
   formStatus: RequestStatus;
   formMessage: string | null;
   deleteMessage: string | null;
+  overrideMessage: string | null;
   loadLeads: () => Promise<void>;
   loadLead: (leadId: string) => Promise<void>;
   createLead: (values: LeadFormValues) => Promise<string | null>;
   updateLead: (leadId: string, values: LeadFormValues) => Promise<boolean>;
   deleteLead: (leadId: string) => Promise<boolean>;
+  overrideQualification: (
+    leadId: string,
+    score: unknown,
+    reason: string,
+  ) => Promise<boolean>;
   clearForm: () => void;
+  clearOverride: () => void;
 };
 
 export const useLeadStore = create<LeadStore>()((set, get) => ({
@@ -183,8 +191,12 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
   formStatus: "idle",
   formMessage: null,
   deleteMessage: null,
+  overrideMessage: null,
   clearForm: () => {
     set({ formStatus: "idle", formMessage: null });
+  },
+  clearOverride: () => {
+    set({ overrideMessage: null });
   },
   loadLead: async (leadId) => {
     const token = authToken();
@@ -357,6 +369,48 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
       set({
         formMessage: err instanceof Error ? err.message : "Failed to reach API",
         formStatus: "error",
+      });
+      return false;
+    }
+  },
+  overrideQualification: async (leadId, score, reason) => {
+    const token = authToken();
+    if (!token) {
+      set({ overrideMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ overrideMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/qualification`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ score, reason }),
+      });
+      const data = await readJson<Partial<OverrideLeadQualificationResponse>>(
+        res,
+      );
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ overrideMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        overrideMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        overrideMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
       });
       return false;
     }

@@ -1,10 +1,10 @@
 import { generateJson } from "@ithaca/ai-model";
+import type { JsonModelRequest, JsonModelResponse } from "@ithaca/ai-model";
+import { qualificationLabelsForScore } from "@ithaca/shared";
 import type {
   AgentStageResult,
   IdealCustomerProfileInput,
-  LeadPriority,
   LeadQualificationCriterion,
-  QualificationFitLabel,
   WorkflowLeadContact,
   WorkflowLeadContext,
   WorkflowLeadQualification,
@@ -20,9 +20,25 @@ const qualificationSystem = [
   "score is an integer from 0 to 100. 100 is a complete fit and 0 is no fit.",
   "explanation states how the score was measured.",
   "evidence lists the company facts that support the score.",
-  "criteria lists each profile check you applied. name is the check. result is the short outcome.",
+  "criteria lists each profile check from the prompt. name is the check name given there. result is the short outcome.",
   "leadId must be the lead id from the prompt.",
 ].join(" ");
+const extraCriterionRule = [
+  "Budget and the business-need description, when listed in the prompt, are extra checks.",
+  "Judge them only from facts already in the prompt, mainly the company description.",
+  "If the lead does not mention that budget or need, leave the score on the other criteria and do not add a failed check for the gap.",
+  "Raise or lower the score only when a stated fact supports or contradicts the check.",
+].join(" ");
+
+const industryCheck = "Industry";
+const excludedIndustriesCheck = "Excluded industries";
+const locationCheck = "Location";
+const companySizeCheck = "Company size";
+const businessNeedKeywordsCheck = "Business need keywords";
+const budgetCheck = "Budget";
+const businessNeedDescriptionCheck = "Business-need description";
+const noCriteriaContributed =
+  "No ideal-customer criteria contributed to the score.";
 
 const qualificationResponseSchema = {
   type: "OBJECT",
@@ -62,6 +78,15 @@ export interface RankLeadsResult {
 
 type ScoredQualification = Omit<WorkflowLeadQualification, "priorityRank">;
 
+type QualifyGenerate = (
+  request: JsonModelRequest,
+) => Promise<JsonModelResponse>;
+
+type ProfileChecks = {
+  required: string[];
+  optional: string[];
+};
+
 function textOrNone(value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
   return trimmed.length === 0 ? "none" : trimmed;
@@ -100,6 +125,129 @@ function companySize(icp: IdealCustomerProfileInput): string {
   return `up to ${maximum}`;
 }
 
+function budgetAmount(icp: IdealCustomerProfileInput): string | undefined {
+  const minimum = icp.budgetMin;
+  const maximum = icp.budgetMax;
+  const currency = icp.budgetCurrency?.trim() ?? "";
+
+  let range = "";
+  if (minimum !== undefined && maximum !== undefined) {
+    range = `${minimum}-${maximum}`;
+  } else if (minimum !== undefined) {
+    range = `${minimum} or more`;
+  } else if (maximum !== undefined) {
+    range = `up to ${maximum}`;
+  }
+
+  if (currency.length > 0 && range.length > 0) {
+    return `${currency} ${range}`;
+  }
+
+  if (range.length > 0) {
+    return range;
+  }
+
+  if (currency.length > 0) {
+    return currency;
+  }
+
+  return undefined;
+}
+
+function trimmedOrUndefined(value: string | undefined): string | undefined {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function hasText(values: readonly string[] | undefined): boolean {
+  if (values === undefined) {
+    return false;
+  }
+
+  return values.some((value) => value.trim().length > 0);
+}
+
+function hasCompanySize(icp: IdealCustomerProfileInput): boolean {
+  return icp.companySizeMin !== undefined || icp.companySizeMax !== undefined;
+}
+
+function hasBudgetCheck(icp: IdealCustomerProfileInput): boolean {
+  return (
+    icp.budgetMin !== undefined ||
+    icp.budgetMax !== undefined ||
+    trimmedOrUndefined(icp.budgetNotes) !== undefined
+  );
+}
+
+function profileChecks(icp: IdealCustomerProfileInput): ProfileChecks {
+  const required: string[] = [];
+  if (hasText(icp.industries)) {
+    required.push(industryCheck);
+  }
+  if (hasText(icp.industriesExclude)) {
+    required.push(excludedIndustriesCheck);
+  }
+  if (hasText(icp.locations)) {
+    required.push(locationCheck);
+  }
+  if (hasCompanySize(icp)) {
+    required.push(companySizeCheck);
+  }
+  if (hasText(icp.businessNeedKeywords)) {
+    required.push(businessNeedKeywordsCheck);
+  }
+
+  const optional: string[] = [];
+  if (hasBudgetCheck(icp)) {
+    optional.push(budgetCheck);
+  }
+  if (trimmedOrUndefined(icp.businessNeedDescription) !== undefined) {
+    optional.push(businessNeedDescriptionCheck);
+  }
+
+  return { required, optional };
+}
+
+function checkLines(icp: IdealCustomerProfileInput): string[] {
+  const checks = profileChecks(icp);
+  const lines = [
+    checks.required.length === 0
+      ? "Required checks: none."
+      : `Required checks: ${checks.required.join(", ")}.`,
+  ];
+
+  if (checks.required.length > 0) {
+    lines.push(
+      "Each required check must appear once in criteria. name is that check. result is the short outcome.",
+    );
+  }
+
+  if (checks.optional.length > 0) {
+    lines.push(
+      `Optional checks: ${checks.optional.join(", ")}. Include an optional check only when a stated fact supports or contradicts it.`,
+    );
+  }
+
+  lines.push("Do not add a check that is not listed here.");
+  return lines;
+}
+
+function hasExtraCriterion(icp: IdealCustomerProfileInput): boolean {
+  return (
+    budgetAmount(icp) !== undefined ||
+    trimmedOrUndefined(icp.budgetNotes) !== undefined ||
+    trimmedOrUndefined(icp.businessNeedDescription) !== undefined
+  );
+}
+
+function qualificationSystemFor(icp: IdealCustomerProfileInput): string {
+  if (!hasExtraCriterion(icp)) {
+    return qualificationSystem;
+  }
+
+  return `${qualificationSystem} ${extraCriterionRule}`;
+}
+
 function contactText(contact: WorkflowLeadContact | undefined): string {
   if (contact === undefined) {
     return "none";
@@ -117,7 +265,7 @@ function qualificationPrompt(
   icp: IdealCustomerProfileInput,
   lead: WorkflowLeadContext,
 ): string {
-  return [
+  const lines = [
     `Lead id: ${lead.leadId}`,
     `Company: ${lead.companyName}`,
     `Website: ${textOrNone(lead.website)}`,
@@ -132,7 +280,25 @@ function qualificationPrompt(
     `Locations: ${joined(icp.locations)}`,
     `Company size: ${companySize(icp)}`,
     `Business need keywords: ${joined(icp.businessNeedKeywords)}`,
-  ].join("\n");
+  ];
+
+  const amount = budgetAmount(icp);
+  if (amount !== undefined) {
+    lines.push(`Budget: ${amount}`);
+  }
+
+  const notes = trimmedOrUndefined(icp.budgetNotes);
+  if (notes !== undefined) {
+    lines.push(`Budget notes: ${notes}`);
+  }
+
+  const description = trimmedOrUndefined(icp.businessNeedDescription);
+  if (description !== undefined) {
+    lines.push(`Business-need description: ${description}`);
+  }
+
+  lines.push(...checkLines(icp));
+  return lines.join("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,9 +346,62 @@ function readCriteria(
   });
 }
 
+function criteriaContributedMessage(leadId: string): string {
+  return `Lead ${leadId} qualification does not state which ideal-customer criteria contributed.`;
+}
+
+function acceptedCriteria(
+  leadId: string,
+  icp: IdealCustomerProfileInput,
+  criteria: readonly LeadQualificationCriterion[],
+): LeadQualificationCriterion[] {
+  const checks = profileChecks(icp);
+  const allowed = new Set([...checks.required, ...checks.optional]);
+  const byName = new Map<string, LeadQualificationCriterion>();
+
+  for (const criterion of criteria) {
+    if (!allowed.has(criterion.name) || byName.has(criterion.name)) {
+      throw new Error(criteriaContributedMessage(leadId));
+    }
+
+    byName.set(criterion.name, criterion);
+  }
+
+  for (const name of checks.required) {
+    if (!byName.has(name)) {
+      throw new Error(criteriaContributedMessage(leadId));
+    }
+  }
+
+  const ordered: LeadQualificationCriterion[] = [];
+  for (const name of [...checks.required, ...checks.optional]) {
+    const criterion = byName.get(name);
+    if (criterion !== undefined) {
+      ordered.push(criterion);
+    }
+  }
+
+  return ordered;
+}
+
+function explanationWithCriteria(
+  modelExplanation: string,
+  criteria: readonly LeadQualificationCriterion[],
+): string {
+  if (criteria.length === 0) {
+    return `${modelExplanation} ${noCriteriaContributed}`;
+  }
+
+  const contributed = criteria
+    .map((criterion) => `${criterion.name} (${criterion.result})`)
+    .join(", ");
+  return `${modelExplanation} Criteria that contributed: ${contributed}.`;
+}
+
 function parseQualification(
   leadId: string,
   text: string,
+  icp: IdealCustomerProfileInput,
 ): ScoredQualification {
   let parsed: unknown;
   try {
@@ -215,32 +434,22 @@ function parseQualification(
     throw new Error(`Lead ${leadId} qualification explanation is missing.`);
   }
 
-  const labels = priorityForScore(parsed.score);
+  const criteria = acceptedCriteria(
+    leadId,
+    icp,
+    readCriteria(leadId, parsed.criteria),
+  );
+  const labels = qualificationLabelsForScore(parsed.score);
   return {
     leadId,
     score: parsed.score,
     priorityLabel: labels.priorityLabel,
     fitLabel: labels.fitLabel,
-    explanation: parsed.explanation.trim(),
+    explanation: explanationWithCriteria(parsed.explanation.trim(), criteria),
     evidence: readEvidence(leadId, parsed.evidence),
-    criteriaBreakdown: readCriteria(leadId, parsed.criteria),
+    criteriaBreakdown: criteria,
     isUserOverride: false,
   };
-}
-
-function priorityForScore(score: number): {
-  priorityLabel: LeadPriority;
-  fitLabel: QualificationFitLabel;
-} {
-  if (score >= 70) {
-    return { priorityLabel: "high", fitLabel: "Strong fit" };
-  }
-
-  if (score >= 40) {
-    return { priorityLabel: "medium", fitLabel: "Partial fit" };
-  }
-
-  return { priorityLabel: "low", fitLabel: "Weak fit" };
 }
 
 /**
@@ -273,6 +482,7 @@ export function rankLeads(
 export async function qualifyLeads(
   icp: IdealCustomerProfileInput,
   leads: readonly WorkflowLeadContext[],
+  generate: QualifyGenerate = generateJson,
 ): Promise<AgentStageResult> {
   if (leads.length === 0) {
     return {
@@ -288,10 +498,11 @@ export async function qualifyLeads(
   let promptTokens = 0;
   let completionTokens = 0;
   let cost = 0;
+  const system = qualificationSystemFor(icp);
 
   for (const lead of leads) {
-    const response = await generateJson({
-      system: qualificationSystem,
+    const response = await generate({
+      system,
       prompt: qualificationPrompt(icp, lead),
       responseSchema: qualificationResponseSchema,
     });
@@ -299,7 +510,7 @@ export async function qualifyLeads(
     promptTokens += response.promptTokens;
     completionTokens += response.completionTokens;
     cost += response.estimatedCost;
-    scored.push(parseQualification(lead.leadId, response.text));
+    scored.push(parseQualification(lead.leadId, response.text, icp));
   }
 
   const ranking = rankLeads(

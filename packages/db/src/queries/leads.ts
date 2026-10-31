@@ -30,6 +30,7 @@ export type LeadListDetailRow = Lead & {
   contactName: string | null;
   score: string | null;
   priorityLabel: string | null;
+  qualificationOverridden: boolean | null;
   latestStage: string | null;
   followUpDueAt: Date | null;
   icps: LeadListDetailIcp[];
@@ -60,12 +61,15 @@ export type LeadDetailRow = {
   contactPhone: string | null;
   contactLinkedinUrl: string | null;
   qualificationScore: string | null;
+  qualificationAgentScore: string | null;
   qualificationPriorityLabel: string | null;
   qualificationFitLabel: string | null;
   qualificationExplanation: string | null;
+  qualificationOverrideReason: string | null;
   qualificationEvidence: unknown;
   qualificationCriteriaBreakdown: unknown;
   qualificationIsUserOverride: boolean | null;
+  qualificationOverriddenAt: Date | null;
   summaryText: string | null;
   summaryStructuredReport: unknown;
   summaryIsUserOverride: boolean | null;
@@ -374,12 +378,15 @@ export async function findLeadDetailById(
       contactPhone: contacts.phone,
       contactLinkedinUrl: contacts.linkedinUrl,
       qualificationScore: leadQualifications.score,
+      qualificationAgentScore: leadQualifications.agentScore,
       qualificationPriorityLabel: leadQualifications.priorityLabel,
       qualificationFitLabel: leadQualifications.fitLabel,
       qualificationExplanation: leadQualifications.explanation,
+      qualificationOverrideReason: leadQualifications.overrideReason,
       qualificationEvidence: leadQualifications.evidence,
       qualificationCriteriaBreakdown: leadQualifications.criteriaBreakdown,
       qualificationIsUserOverride: leadQualifications.isUserOverride,
+      qualificationOverriddenAt: leadQualifications.overriddenAt,
       summaryText: leadSummaries.summaryText,
       summaryStructuredReport: leadSummaries.structuredReport,
       summaryIsUserOverride: leadSummaries.isUserOverride,
@@ -518,6 +525,7 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       contactName: contacts.fullName,
       score: leadQualifications.score,
       priorityLabel: leadQualifications.priorityLabel,
+      qualificationOverridden: leadQualifications.isUserOverride,
     })
     .from(leads)
     .innerJoin(companies, eq(leads.companyId, companies.companyId))
