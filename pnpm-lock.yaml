@@ -152,6 +152,9 @@ importers:
       '@ithaca/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.15.21
+        version: 22.20.5
       eslint:
         specifier: ^9.28.0
         version: 9.39.5

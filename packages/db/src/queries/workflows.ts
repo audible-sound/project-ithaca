@@ -47,6 +47,8 @@ export type TokenUsageDraft = {
   agentType: TokenUsageAgentType;
   modelName: string;
   estimatedCost: string;
+  promptTokens?: number;
+  completionTokens?: number;
 };
 
 export type WorkflowRunStatusPatch = {
@@ -281,8 +283,8 @@ export async function insertTokenUsage(
       workflowStepId: draft.workflowStepId,
       agentType: draft.agentType,
       modelName: draft.modelName,
-      promptTokens: null,
-      completionTokens: null,
+      promptTokens: draft.promptTokens ?? null,
+      completionTokens: draft.completionTokens ?? null,
       estimatedCost: draft.estimatedCost,
       createdAt: new Date(),
     })

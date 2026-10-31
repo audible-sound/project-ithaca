@@ -1,3 +1,4 @@
+import type { WorkflowLeadContact, WorkflowLeadContext } from "@ithaca/shared";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import type { CompanySizeBand, Lead, SourceReference } from "../schema/leads.js";
@@ -206,6 +207,85 @@ function nextStoredDescription(
   return undefined;
 }
 
+type LeadContextRow = {
+  leadId: string;
+  companyName: string;
+  website: string | null;
+  industry: string | null;
+  location: string | null;
+  companySizeBand: string | null;
+  description: string | null;
+  contactFullName: string | null;
+  contactJobTitle: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  contactLinkedinUrl: string | null;
+};
+
+function toLeadContext(row: LeadContextRow): WorkflowLeadContext {
+  const companyName = trimmedOrAbsent(row.companyName);
+  if (companyName === undefined) {
+    throw new Error(`Lead ${row.leadId} has no company name.`);
+  }
+
+  const context: WorkflowLeadContext = {
+    leadId: row.leadId,
+    companyName,
+  };
+  const website = trimmedOrAbsent(row.website ?? undefined);
+  if (website !== undefined) {
+    context.website = website;
+  }
+
+  const industry = trimmedOrAbsent(row.industry ?? undefined);
+  if (industry !== undefined) {
+    context.industry = industry;
+  }
+
+  const location = trimmedOrAbsent(row.location ?? undefined);
+  if (location !== undefined) {
+    context.location = location;
+  }
+
+  const companySizeBand = acceptedSizeBand(row.companySizeBand ?? undefined);
+  if (companySizeBand !== undefined) {
+    context.companySizeBand = companySizeBand;
+  }
+
+  const description = trimmedOrAbsent(row.description ?? undefined);
+  if (description !== undefined) {
+    context.description = description;
+  }
+
+  const fullName = trimmedOrAbsent(row.contactFullName ?? undefined);
+  if (fullName !== undefined) {
+    const contact: WorkflowLeadContact = { fullName };
+    const jobTitle = trimmedOrAbsent(row.contactJobTitle ?? undefined);
+    if (jobTitle !== undefined) {
+      contact.jobTitle = jobTitle;
+    }
+
+    const email = trimmedOrAbsent(row.contactEmail ?? undefined);
+    if (email !== undefined) {
+      contact.email = email;
+    }
+
+    const phone = trimmedOrAbsent(row.contactPhone ?? undefined);
+    if (phone !== undefined) {
+      contact.phone = phone;
+    }
+
+    const linkedinUrl = trimmedOrAbsent(row.contactLinkedinUrl ?? undefined);
+    if (linkedinUrl !== undefined) {
+      contact.linkedinUrl = linkedinUrl;
+    }
+
+    context.contact = contact;
+  }
+
+  return context;
+}
+
 /**
  * Finds a lead by its ID for a specific user.
  * @param leadId - The ID of the lead to find.
@@ -304,6 +384,50 @@ export async function listLeadsByIdsForUser(
     .where(
       and(inArray(leads.leadId, leadIds), eq(leads.createdByUserId, userId)),
     );
+}
+
+/**
+ * Company and contact fields for qualification, in the order of `leadIds`.
+ * @param leadIds - Lead ids from the workflow run.
+ * @returns One context per id.
+ * @throws When a lead id has no row.
+ */
+export async function listLeadContextsByIds(
+  leadIds: string[],
+): Promise<WorkflowLeadContext[]> {
+  if (leadIds.length === 0) {
+    return [];
+  }
+
+  const rows = await requireDb()
+    .select({
+      leadId: leads.leadId,
+      companyName: companies.name,
+      website: companies.website,
+      industry: companies.industry,
+      location: companies.location,
+      companySizeBand: companies.sizeBand,
+      description: companies.description,
+      contactFullName: contacts.fullName,
+      contactJobTitle: contacts.jobTitle,
+      contactEmail: contacts.email,
+      contactPhone: contacts.phone,
+      contactLinkedinUrl: contacts.linkedinUrl,
+    })
+    .from(leads)
+    .innerJoin(companies, eq(leads.companyId, companies.companyId))
+    .leftJoin(contacts, eq(leads.primaryContactId, contacts.contactId))
+    .where(inArray(leads.leadId, leadIds));
+
+  const byId = new Map(rows.map((row) => [row.leadId, row]));
+  return leadIds.map((leadId) => {
+    const row = byId.get(leadId);
+    if (row === undefined) {
+      throw new Error(`Lead ${leadId} was not found.`);
+    }
+
+    return toLeadContext(row);
+  });
 }
 
 /**

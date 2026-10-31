@@ -8,15 +8,20 @@ import {
   insertIdentifiedLead,
   insertTokenUsage,
   insertWorkflowRunLeads,
+  listLeadContextsByIds,
   listWorkflowRunLeadsByRunId,
   listWorkflowStepsByRunId,
   updateWorkflowRunLeadStatus,
   updateWorkflowRunStatus,
   updateWorkflowStepStatus,
+  upsertLeadQualification,
+  upsertLeadSummary,
 } from "@ithaca/db";
 import type {
   IdentifiedLeadDraft,
   InsertIdentifiedLeadResult,
+  LeadQualificationDraft,
+  LeadSummaryDraft,
   TokenUsageDraft,
   WorkflowRunLead as WorkflowRunLeadRow,
   WorkflowRunLeadDraft,
@@ -31,6 +36,8 @@ import type {
   IdealCustomerProfileInput,
   LeadWorkflowInput,
   LeadWorkflowResult,
+  WorkflowLeadContext,
+  WorkflowLeadQualification,
   WorkflowLeadStatus,
   WorkflowStepType,
 } from "@ithaca/shared";
@@ -71,12 +78,19 @@ type WorkflowPersistence = {
     drafts: WorkflowRunLeadDraft[],
   ) => Promise<WorkflowRunLeadRow[]>;
   insertTokenUsage: (draft: TokenUsageDraft) => Promise<void>;
+  listLeadContexts: (leadIds: string[]) => Promise<WorkflowLeadContext[]>;
+  upsertLeadQualification: (draft: LeadQualificationDraft) => Promise<void>;
+  upsertLeadSummary: (draft: LeadSummaryDraft) => Promise<void>;
 };
 
 const defaultAgents: WorkflowAgents = {
   identify: identifyLeads,
-  qualify: (icp) => qualifyLeads(icp, []),
-  summarize: summarizeLeads,
+  qualify: () => {
+    throw new Error("Lead qualification requires the workflow leads.");
+  },
+  summarize: () => {
+    throw new Error("Lead summary requires the workflow leads.");
+  },
   draft: draftOutreach,
 };
 
@@ -100,6 +114,9 @@ const defaultPersistence: WorkflowPersistence = {
   async insertTokenUsage(draft) {
     await insertTokenUsage(draft);
   },
+  listLeadContexts: listLeadContextsByIds,
+  upsertLeadQualification,
+  upsertLeadSummary,
 };
 
 function databaseUnavailable(error: unknown): boolean {
@@ -147,6 +164,7 @@ async function runPersisted(
 
   const steps = await persistence.listSteps(workflowRunId);
   let leads = await persistence.listRunLeads(workflowRunId);
+  let qualifications: WorkflowLeadQualification[] = [];
   const stages: AgentStageResult[] = [];
 
   // Identify, qualify, summarize, and draft run in that order. A failure stops here.
@@ -210,6 +228,16 @@ async function runPersisted(
           message:
             "Selected leads were already attached. Lead identification did not search for companies.",
         };
+      } else if (stepType === "qualify") {
+        const contexts = await persistence.listLeadContexts(
+          leads.map((lead) => lead.leadId),
+        );
+        result = await qualifyLeads(icp, contexts);
+      } else if (stepType === "summarize") {
+        const contexts = await persistence.listLeadContexts(
+          leads.map((lead) => lead.leadId),
+        );
+        result = await summarizeLeads(icp, contexts, qualifications);
       } else {
         result = await agents[stepType](icp);
       }
@@ -311,6 +339,101 @@ async function runPersisted(
           workflowRunId,
           step,
           leadsForFailure,
+          stepType,
+          message,
+          durationMs,
+        );
+        stages.push({ stage: stepType, status: "failed", message });
+        return { status: "failed", stages };
+      }
+    }
+
+    if (stepType === "qualify" && result.status === "completed") {
+      qualifications = result.qualifications ?? [];
+    }
+
+    if (
+      stepType === "qualify" &&
+      result.status === "completed" &&
+      result.qualifications !== undefined &&
+      result.qualifications.length > 0
+    ) {
+      try {
+        for (const qualification of result.qualifications) {
+          await persistence.upsertLeadQualification({
+            leadId: qualification.leadId,
+            workflowRunId,
+            score: qualification.score,
+            priorityRank: qualification.priorityRank,
+            priorityLabel: qualification.priorityLabel,
+            fitLabel: qualification.fitLabel,
+            explanation: qualification.explanation,
+            evidence: qualification.evidence,
+            criteriaBreakdown: qualification.criteriaBreakdown,
+          });
+        }
+
+        if (result.usage !== undefined) {
+          await persistence.insertTokenUsage({
+            workflowRunId,
+            workflowStepId: step.workflowStepId,
+            agentType: "qualification",
+            modelName: result.usage.modelName,
+            promptTokens: result.usage.promptTokens,
+            completionTokens: result.usage.completionTokens,
+            estimatedCost: String(result.usage.estimatedCost),
+          });
+        }
+      } catch (error) {
+        const message = thrownMessage(error);
+        await failStage(
+          persistence,
+          workflowRunId,
+          step,
+          leads,
+          stepType,
+          message,
+          durationMs,
+        );
+        stages.push({ stage: stepType, status: "failed", message });
+        return { status: "failed", stages };
+      }
+    }
+
+    if (
+      stepType === "summarize" &&
+      result.status === "completed" &&
+      result.summaries !== undefined &&
+      result.summaries.length > 0
+    ) {
+      try {
+        for (const summary of result.summaries) {
+          await persistence.upsertLeadSummary({
+            leadId: summary.leadId,
+            workflowRunId,
+            summaryText: summary.summaryText,
+            structuredReport: summary.structuredReport,
+          });
+        }
+
+        if (result.usage !== undefined) {
+          await persistence.insertTokenUsage({
+            workflowRunId,
+            workflowStepId: step.workflowStepId,
+            agentType: "summary",
+            modelName: result.usage.modelName,
+            promptTokens: result.usage.promptTokens,
+            completionTokens: result.usage.completionTokens,
+            estimatedCost: String(result.usage.estimatedCost),
+          });
+        }
+      } catch (error) {
+        const message = thrownMessage(error);
+        await failStage(
+          persistence,
+          workflowRunId,
+          step,
+          leads,
           stepType,
           message,
           durationMs,

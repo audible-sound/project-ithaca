@@ -1,9 +1,11 @@
+import { generateJson } from "@ithaca/ai-model";
 import type {
   AgentStageResult,
   IdealCustomerProfileInput,
   LeadPriority,
   LeadQualificationCriterion,
   QualificationFitLabel,
+  WorkflowLeadContact,
   WorkflowLeadContext,
   WorkflowLeadQualification,
 } from "@ithaca/shared";
@@ -12,20 +14,40 @@ const suitabilityScoreMessage = "A suitability score is produced for the lead.";
 const noLeadsMessage = "Lead qualification completed with no leads.";
 const rankedBySuitabilityMessage =
   "Leads ranked by suitability, highest score first.";
-const explanationIntro =
-  "Explanation of how the suitability score was measured, with supporting evidence.";
+const qualificationSystem = [
+  "You qualify one B2B sales lead against an ideal customer profile.",
+  "Return a JSON object for that lead only.",
+  "score is an integer from 0 to 100. 100 is a complete fit and 0 is no fit.",
+  "explanation states how the score was measured.",
+  "evidence lists the company facts that support the score.",
+  "criteria lists each profile check you applied. name is the check. result is the short outcome.",
+  "leadId must be the lead id from the prompt.",
+].join(" ");
 
-/**
- * Inclusive employee counts for each stored size band.
- * `1000+` starts at 1001 so it matches the company profile parser.
- */
-const companySizeRanges = [
-  { band: "1-10", min: 1, max: 10 },
-  { band: "11-50", min: 11, max: 50 },
-  { band: "51-200", min: 51, max: 200 },
-  { band: "201-1000", min: 201, max: 1000 },
-  { band: "1000+", min: 1001, max: Number.POSITIVE_INFINITY },
-] as const;
+const qualificationResponseSchema = {
+  type: "OBJECT",
+  properties: {
+    leadId: { type: "STRING" },
+    score: { type: "INTEGER", minimum: 0, maximum: 100 },
+    explanation: { type: "STRING" },
+    evidence: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+    },
+    criteria: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          result: { type: "STRING" },
+        },
+        required: ["name", "result"],
+      },
+    },
+  },
+  required: ["leadId", "score", "explanation", "evidence", "criteria"],
+};
 
 export interface RankedLeadScore {
   leadId: string;
@@ -38,255 +60,172 @@ export interface RankLeadsResult {
   ranked: RankedLeadScore[];
 }
 
-interface ScoredCriterion {
-  name: string;
-  result: string;
-  score: number;
-  detail: string;
-  evidence: string[];
-}
-
 type ScoredQualification = Omit<WorkflowLeadQualification, "priorityRank">;
 
-function listed(values: readonly string[] | undefined): string[] {
+function textOrNone(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length === 0 ? "none" : trimmed;
+}
+
+function joined(values: readonly string[] | undefined): string {
   if (values === undefined) {
-    return [];
+    return "none";
   }
 
-  return values
+  const items = values
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
+  return items.length === 0 ? "none" : items.join(", ");
 }
 
-function textOrUndefined(value: string | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
+function companySize(icp: IdealCustomerProfileInput): string {
+  const minimum = icp.companySizeMin;
+  const maximum = icp.companySizeMax;
+  if (minimum === undefined && maximum === undefined) {
+    return "none";
   }
 
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? undefined : trimmed;
-}
-
-function matchesText(left: string, right: string): boolean {
-  const haystack = left.trim().toLowerCase();
-  const needle = right.trim().toLowerCase();
-  if (haystack.length === 0 || needle.length === 0) {
-    return false;
-  }
-
-  return haystack.includes(needle) || needle.includes(haystack);
-}
-
-function quotedList(values: readonly string[]): string {
-  return values.map((value) => `"${value}"`).join(", ");
-}
-
-function criterion(
-  name: string,
-  score: number,
-  detail: string,
-  evidence: string[],
-): ScoredCriterion {
-  return {
-    name,
-    result: String(score),
-    score,
-    detail,
-    evidence,
-  };
-}
-
-function scoreIndustry(
-  icp: IdealCustomerProfileInput,
-  lead: WorkflowLeadContext,
-): ScoredCriterion | undefined {
-  const included = listed(icp.industries);
-  const excluded = listed(icp.industriesExclude);
-  if (included.length === 0 && excluded.length === 0) {
-    return undefined;
-  }
-
-  const industry = textOrUndefined(lead.industry);
-  if (industry === undefined) {
-    return criterion(
-      "Industry",
-      0,
-      "Industry scored 0 because the company industry was not found.",
-      ["Company industry was not found."],
-    );
-  }
-
-  const excludedMatch = excluded.find((option) => matchesText(industry, option));
-  if (excludedMatch !== undefined) {
-    return criterion(
-      "Industry",
-      0,
-      `Industry scored 0 because company industry "${industry}" matches excluded industry "${excludedMatch}".`,
-      [industry],
-    );
-  }
-
-  if (included.length === 0) {
-    return criterion(
-      "Industry",
-      100,
-      `Industry scored 100 because company industry "${industry}" does not match an excluded industry.`,
-      [industry],
-    );
-  }
-
-  const includedMatch = included.find((option) => matchesText(industry, option));
-  if (includedMatch !== undefined) {
-    return criterion(
-      "Industry",
-      100,
-      `Industry scored 100 because company industry "${industry}" matches included industry "${includedMatch}".`,
-      [industry],
-    );
-  }
-
-  const label = included.length === 1 ? "industry" : "industries";
-  return criterion(
-    "Industry",
-    0,
-    `Industry scored 0 because company industry "${industry}" does not match included ${label} ${quotedList(included)}.`,
-    [industry],
-  );
-}
-
-function scoreLocation(
-  icp: IdealCustomerProfileInput,
-  lead: WorkflowLeadContext,
-): ScoredCriterion | undefined {
-  const locations = listed(icp.locations);
-  if (locations.length === 0) {
-    return undefined;
-  }
-
-  const location = textOrUndefined(lead.location);
-  if (location === undefined) {
-    return criterion(
-      "Location",
-      0,
-      "Location scored 0 because the company location was not found.",
-      ["Company location was not found."],
-    );
-  }
-
-  const match = locations.find((option) => matchesText(location, option));
-  if (match !== undefined) {
-    return criterion(
-      "Location",
-      100,
-      `Location scored 100 because company location "${location}" matches location "${match}".`,
-      [location],
-    );
-  }
-
-  const label = locations.length === 1 ? "location" : "locations";
-  return criterion(
-    "Location",
-    0,
-    `Location scored 0 because company location "${location}" does not match ${label} ${quotedList(locations)}.`,
-    [location],
-  );
-}
-
-function formatSizeTarget(
-  minimum: number | undefined,
-  maximum: number | undefined,
-): string {
   if (minimum !== undefined && maximum !== undefined) {
-    return `${minimum}–${maximum}`;
+    return `${minimum}-${maximum}`;
   }
 
   if (minimum !== undefined) {
     return `${minimum} or more`;
   }
 
-  if (maximum !== undefined) {
-    return `up to ${maximum}`;
+  if (maximum === undefined) {
+    return "none";
   }
 
-  return "the requested company size";
+  return `up to ${maximum}`;
 }
 
-function scoreCompanySize(
-  icp: IdealCustomerProfileInput,
-  lead: WorkflowLeadContext,
-): ScoredCriterion | undefined {
-  const minimum = icp.companySizeMin;
-  const maximum = icp.companySizeMax;
-  if (minimum === undefined && maximum === undefined) {
-    return undefined;
+function contactText(contact: WorkflowLeadContact | undefined): string {
+  if (contact === undefined) {
+    return "none";
   }
 
-  const band = textOrUndefined(lead.companySizeBand);
-  const range =
-    band === undefined
-      ? undefined
-      : companySizeRanges.find((entry) => entry.band === band);
-  if (band === undefined || range === undefined) {
-    return criterion(
-      "Company size",
-      0,
-      "Company size scored 0 because the size was not found.",
-      ["Company size was not found."],
-    );
+  const title = contact.jobTitle?.trim() ?? "";
+  if (title.length === 0) {
+    return contact.fullName;
   }
 
-  const criteriaMin = minimum ?? Number.NEGATIVE_INFINITY;
-  const criteriaMax = maximum ?? Number.POSITIVE_INFINITY;
-  const overlaps = range.min <= criteriaMax && range.max >= criteriaMin;
-  const target = formatSizeTarget(minimum, maximum);
-  if (overlaps) {
-    return criterion(
-      "Company size",
-      100,
-      `Company size scored 100 because company size band "${band}" overlaps ${target}.`,
-      [band],
-    );
-  }
-
-  return criterion(
-    "Company size",
-    0,
-    `Company size scored 0 because company size band "${band}" does not overlap ${target}.`,
-    [band],
-  );
+  return `${contact.fullName}, ${title}`;
 }
 
-function scoreBusinessNeed(
+function qualificationPrompt(
   icp: IdealCustomerProfileInput,
   lead: WorkflowLeadContext,
-): ScoredCriterion | undefined {
-  const keywords = listed(icp.businessNeedKeywords);
-  if (keywords.length === 0) {
-    return undefined;
+): string {
+  return [
+    `Lead id: ${lead.leadId}`,
+    `Company: ${lead.companyName}`,
+    `Website: ${textOrNone(lead.website)}`,
+    `Industry: ${textOrNone(lead.industry)}`,
+    `Location: ${textOrNone(lead.location)}`,
+    `Company size band: ${textOrNone(lead.companySizeBand)}`,
+    `Description: ${textOrNone(lead.description)}`,
+    `Contact: ${contactText(lead.contact)}`,
+    `Ideal customer profile: ${icp.name}`,
+    `Included industries: ${joined(icp.industries)}`,
+    `Excluded industries: ${joined(icp.industriesExclude)}`,
+    `Locations: ${joined(icp.locations)}`,
+    `Company size: ${companySize(icp)}`,
+    `Business need keywords: ${joined(icp.businessNeedKeywords)}`,
+  ].join("\n");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readEvidence(leadId: string, value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Lead ${leadId} qualification evidence is missing.`);
   }
 
-  const companyName = lead.companyName.trim();
-  const description = textOrUndefined(lead.description);
-  const haystack = `${companyName}\n${description ?? ""}`.toLowerCase();
-  const matched = keywords.filter((keyword) =>
-    haystack.includes(keyword.toLowerCase()),
-  );
-  const score = Math.round((matched.length / keywords.length) * 100);
-  const fields =
-    description === undefined
-      ? `company name "${companyName}"`
-      : `company name "${companyName}" and company description "${description}"`;
-  const matchedText =
-    matched.length === 0
-      ? ""
-      : ` (${matched.map((keyword) => `"${keyword}"`).join(", ")})`;
+  return value.map((item) => {
+    if (typeof item !== "string" || item.trim().length === 0) {
+      throw new Error(`Lead ${leadId} qualification evidence is invalid.`);
+    }
 
-  return criterion(
-    "Business need",
-    score,
-    `Business need scored ${score} because ${matched.length} of ${keywords.length} keywords${matchedText} matched ${fields}.`,
-    description === undefined ? [companyName] : [companyName, description],
-  );
+    return item.trim();
+  });
+}
+
+function readCriteria(
+  leadId: string,
+  value: unknown,
+): LeadQualificationCriterion[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Lead ${leadId} qualification criteria are missing.`);
+  }
+
+  return value.map((item) => {
+    if (
+      !isRecord(item) ||
+      typeof item.name !== "string" ||
+      typeof item.result !== "string"
+    ) {
+      throw new Error(`Lead ${leadId} qualification criteria are invalid.`);
+    }
+
+    const name = item.name.trim();
+    const result = item.result.trim();
+    if (name.length === 0 || result.length === 0) {
+      throw new Error(`Lead ${leadId} qualification criteria are invalid.`);
+    }
+
+    return { name, result };
+  });
+}
+
+function parseQualification(
+  leadId: string,
+  text: string,
+): ScoredQualification {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Lead ${leadId} qualification was not valid JSON.`);
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error(`Lead ${leadId} qualification was not valid JSON.`);
+  }
+
+  if (parsed.leadId !== leadId) {
+    throw new Error(`Lead ${leadId} qualification did not match the lead.`);
+  }
+
+  if (
+    typeof parsed.score !== "number" ||
+    !Number.isInteger(parsed.score) ||
+    parsed.score < 0 ||
+    parsed.score > 100
+  ) {
+    throw new Error(`Lead ${leadId} qualification score is invalid.`);
+  }
+
+  if (
+    typeof parsed.explanation !== "string" ||
+    parsed.explanation.trim().length === 0
+  ) {
+    throw new Error(`Lead ${leadId} qualification explanation is missing.`);
+  }
+
+  const labels = priorityForScore(parsed.score);
+  return {
+    leadId,
+    score: parsed.score,
+    priorityLabel: labels.priorityLabel,
+    fitLabel: labels.fitLabel,
+    explanation: parsed.explanation.trim(),
+    evidence: readEvidence(leadId, parsed.evidence),
+    criteriaBreakdown: readCriteria(leadId, parsed.criteria),
+    isUserOverride: false,
+  };
 }
 
 function priorityForScore(score: number): {
@@ -302,49 +241,6 @@ function priorityForScore(score: number): {
   }
 
   return { priorityLabel: "low", fitLabel: "Weak fit" };
-}
-
-function averageScore(scores: readonly number[]): number {
-  const total = scores.reduce((sum, score) => sum + score, 0);
-  return Math.round(total / scores.length);
-}
-
-function scoreLead(
-  icp: IdealCustomerProfileInput,
-  lead: WorkflowLeadContext,
-): ScoredQualification {
-  const criteria = [
-    scoreIndustry(icp, lead),
-    scoreLocation(icp, lead),
-    scoreCompanySize(icp, lead),
-    scoreBusinessNeed(icp, lead),
-  ].filter((item): item is ScoredCriterion => item !== undefined);
-  const score =
-    criteria.length === 0 ? 0 : averageScore(criteria.map((item) => item.score));
-  const labels = priorityForScore(score);
-  const explanation =
-    criteria.length === 0
-      ? `${explanationIntro} No qualification criteria were set.`
-      : `${explanationIntro} Suitability score ${score} is the rounded average of the criterion scores. ${criteria
-          .map((item) => item.detail)
-          .join(" ")}`;
-  const criteriaBreakdown: LeadQualificationCriterion[] = criteria.map(
-    (item) => ({
-      name: item.name,
-      result: item.result,
-    }),
-  );
-
-  return {
-    leadId: lead.leadId,
-    score,
-    priorityLabel: labels.priorityLabel,
-    fitLabel: labels.fitLabel,
-    explanation,
-    evidence: criteria.flatMap((item) => item.evidence),
-    criteriaBreakdown,
-    isUserOverride: false,
-  };
 }
 
 /**
@@ -387,7 +283,25 @@ export async function qualifyLeads(
     };
   }
 
-  const scored = leads.map((lead) => scoreLead(icp, lead));
+  const scored: ScoredQualification[] = [];
+  let modelName = "";
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let cost = 0;
+
+  for (const lead of leads) {
+    const response = await generateJson({
+      system: qualificationSystem,
+      prompt: qualificationPrompt(icp, lead),
+      responseSchema: qualificationResponseSchema,
+    });
+    modelName = response.modelName;
+    promptTokens += response.promptTokens;
+    completionTokens += response.completionTokens;
+    cost += response.estimatedCost;
+    scored.push(parseQualification(lead.leadId, response.text));
+  }
+
   const ranking = rankLeads(
     scored.map((item) => ({ leadId: item.leadId, score: item.score })),
   );
@@ -415,5 +329,11 @@ export async function qualifyLeads(
     status: "completed",
     message: suitabilityScoreMessage,
     qualifications,
+    usage: {
+      modelName,
+      promptTokens,
+      completionTokens,
+      estimatedCost: Math.round(cost * 100_000_000) / 100_000_000,
+    },
   };
 }
