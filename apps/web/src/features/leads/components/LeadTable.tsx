@@ -196,7 +196,7 @@ export function LeadTable({
                   <TableCell>{priorityLabel(lead)}</TableCell>
                   <TableCell>{leadStageLabel(lead.stage)}</TableCell>
                   <TableCell>
-                    {lead.followUpDue ? (
+                    {lead.followUpIndicator === "due" ? (
                       <Typography
                         variant="body2"
                         component="span"
@@ -204,6 +204,10 @@ export function LeadTable({
                       >
                         Due
                       </Typography>
+                    ) : lead.followUpIndicator === "snoozed" ? (
+                      "Snoozed"
+                    ) : lead.followUpIndicator === "replied" ? (
+                      "Replied"
                     ) : (
                       "—"
                     )}

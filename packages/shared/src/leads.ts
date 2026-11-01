@@ -46,6 +46,15 @@ export type LeadListStage = (typeof leadListStages)[number];
 export const leadPriorities = ["high", "medium", "low"] as const;
 export type LeadPriority = (typeof leadPriorities)[number];
 
+/** Follow-up column on the leads table. Null means a dash. */
+export const leadFollowUpIndicators = ["due", "snoozed", "replied"] as const;
+export type LeadFollowUpIndicator =
+  (typeof leadFollowUpIndicators)[number] | null;
+
+/** Follow-up status stored on the send or Done delivery. */
+export const leadFollowUpStatuses = ["open", "snoozed", "replied"] as const;
+export type LeadFollowUpStatus = (typeof leadFollowUpStatuses)[number];
+
 /** One row on the Leads page (`GET /leads/all`). */
 export interface LeadListItem {
   leadId: string;
@@ -62,8 +71,13 @@ export interface LeadListItem {
   /** True when a person replaced the agent suitability score. */
   qualificationOverridden: boolean;
   stage: LeadListStage;
-  /** True when a reply is overdue or the lead is marked as needing follow-up. */
+  /** True when the Follow-up column shows Due. */
   followUpDue: boolean;
+  /**
+   * Follow-up column: due, snoozed, or replied.
+   * Null when the column shows a dash.
+   */
+  followUpIndicator: LeadFollowUpIndicator;
   /**
    * Profiles from workflow runs that included this lead.
    * Empty when the lead has never been in a run. Each profile appears once.
@@ -212,6 +226,10 @@ export interface LeadFollowUpDetail {
   sentAt: string | null;
   dueAt: string | null;
   repliedAt: string | null;
+  followedUpAt: string | null;
+  followUpCount: number;
+  followUpStatus: LeadFollowUpStatus | null;
+  closeReason: string | null;
   deliveryStatus: string | null;
 }
 
@@ -234,6 +252,7 @@ export interface LeadDetail {
   /** Same stage value as the leads table. */
   stage: LeadListStage;
   followUpDue: boolean;
+  followUpIndicator: LeadFollowUpIndicator;
   /** ISO timestamps. */
   createdAt: string | null;
   updatedAt: string | null;
@@ -364,6 +383,35 @@ export interface SendLeadOutreachResponse {
 
 /** Body of a successful `POST /leads/:leadId/outreach/done`. */
 export interface DoneLeadOutreachResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `POST /leads/:leadId/follow-up/snooze`. */
+export interface SnoozeLeadFollowUpResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `POST /leads/:leadId/follow-up/log`. */
+export interface LogLeadFollowUpResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `POST /leads/:leadId/follow-up/replied`. */
+export interface RecordLeadFollowUpReplyResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of `POST /leads/:leadId/follow-up/close`. An empty reason is allowed. */
+export interface CloseLeadFollowUpRequest {
+  reason?: string;
+}
+
+/** Body of a successful `POST /leads/:leadId/follow-up/close`. */
+export interface CloseLeadFollowUpResponse {
   message: string;
   lead: LeadDetail;
 }

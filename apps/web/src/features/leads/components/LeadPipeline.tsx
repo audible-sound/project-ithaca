@@ -18,6 +18,7 @@ import { useLeadStore } from "../../../stores/leadStore";
 import { formatDate, formatDateTime } from "../../../utils/date";
 import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
+import { CloseLeadDialog } from "./CloseLeadDialog";
 import { LeadReport } from "./LeadReport";
 import { OutreachDraftDialog } from "./OutreachDraftDialog";
 import { QualificationOverrideDialog } from "./QualificationOverrideDialog";
@@ -78,6 +79,10 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const rejectOutreach = useLeadStore((state) => state.rejectOutreach);
   const sendOutreach = useLeadStore((state) => state.sendOutreach);
   const markOutreachDone = useLeadStore((state) => state.markOutreachDone);
+  const snoozeFollowUp = useLeadStore((state) => state.snoozeFollowUp);
+  const logFollowUp = useLeadStore((state) => state.logFollowUp);
+  const recordFollowUpReply = useLeadStore((state) => state.recordFollowUpReply);
+  const closeFollowUp = useLeadStore((state) => state.closeFollowUp);
   const clearOutreachEdit = useLeadStore((state) => state.clearOutreachEdit);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
@@ -89,6 +94,8 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const [decidingDraft, setDecidingDraft] = useState(false);
   const [sendingDraft, setSendingDraft] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
+  const [followUpBusy, setFollowUpBusy] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
   const ownsLead = lead.ownerId !== null && lead.ownerId === userId;
   const canOverride = ownsLead && lead.qualification !== null;
   const canEditSummary = ownsLead && lead.summary !== null;
@@ -117,6 +124,20 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const rejectedAt = formatDateTime(lead.outreach?.rejectedAt ?? null);
   const doneAt = formatDateTime(lead.outreach?.updatedAt ?? null);
   const sentAt = formatDateTime(lead.followUp?.sentAt ?? null);
+  const followUpDueDate = formatDate(lead.followUp?.dueAt ?? null);
+  const followUpSentDate = formatDate(lead.followUp?.sentAt ?? null);
+  const followUpMarkedDate = formatDate(lead.outreach?.updatedAt ?? null);
+  const followUpRepliedDate = formatDate(lead.followUp?.repliedAt ?? null);
+  const followUpLastDate = formatDate(lead.followUp?.followedUpAt ?? null);
+  const followUpOutreachDate = lead.followUp?.sentAt
+    ? (followUpSentDate ?? "—")
+    : (followUpMarkedDate ?? "—");
+  const canFollowUp =
+    ownsLead &&
+    lead.followUp !== null &&
+    lead.stage !== "closed" &&
+    lead.followUp.followUpStatus !== "replied" &&
+    lead.followUp.repliedAt === null;
 
   function outreachDecisionText(): string | null {
     if (lead.outreach === null) {
@@ -200,6 +221,33 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
     setMarkingDone(true);
     await markOutreachDone(lead.leadId);
     setMarkingDone(false);
+  }
+
+  async function onSnoozeFollowUp(): Promise<void> {
+    setFollowUpBusy(true);
+    await snoozeFollowUp(lead.leadId);
+    setFollowUpBusy(false);
+  }
+
+  async function onLogFollowUp(): Promise<void> {
+    setFollowUpBusy(true);
+    await logFollowUp(lead.leadId);
+    setFollowUpBusy(false);
+  }
+
+  async function onRecordFollowUpReply(): Promise<void> {
+    setFollowUpBusy(true);
+    await recordFollowUpReply(lead.leadId);
+    setFollowUpBusy(false);
+  }
+
+  async function onCloseFollowUp(reason: string): Promise<void> {
+    setFollowUpBusy(true);
+    const closed = await closeFollowUp(lead.leadId, reason);
+    setFollowUpBusy(false);
+    if (closed) {
+      setCloseOpen(false);
+    }
   }
 
   const decisionText = outreachDecisionText();
@@ -462,74 +510,90 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                 ) : null}
 
                 {entry.stage === "follow_up" ? (
-                  lead.followUp ? (
-                    <Stack spacing={0.5}>
-                      <Typography variant="body2" color="text.secondary">
-                        {[
-                          formatDate(lead.followUp.sentAt)
-                            ? `Sent ${formatDate(lead.followUp.sentAt)}.`
-                            : null,
-                          formatDate(lead.followUp.dueAt)
-                            ? `Due ${formatDate(lead.followUp.dueAt)}.`
-                            : null,
-                          lead.followUp.repliedAt
-                            ? `Replied ${formatDate(lead.followUp.repliedAt)}.`
-                            : lead.followUp.sentAt
-                              ? "No reply."
-                              : null,
-                        ]
-                          .filter((part) => part !== null)
-                          .join(" ") || "No follow-up yet."}
-                      </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button size="small" disabled>
-                          Mark replied
-                        </Button>
-                        <Button size="small" disabled>
-                          Snooze
-                        </Button>
-                        <Button size="small" disabled>
-                          Close
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  ) : lead.outreach?.status === "sent" ? (
-                    <Stack spacing={0.5}>
-                      <Typography variant="body2" color="text.secondary">
-                        {doneAt
-                          ? `Marked done ${doneAt}.`
-                          : "Marked done."}
-                      </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button size="small" disabled>
-                          Mark replied
-                        </Button>
-                        <Button size="small" disabled>
-                          Snooze
-                        </Button>
-                        <Button size="small" disabled>
-                          Close
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  ) : (
-                    <Stack spacing={0.5}>
+                  <Stack spacing={0.5}>
+                    {lead.followUp ? (
+                      <>
+                        {followUpDueDate &&
+                        lead.followUp.repliedAt === null ? (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: lead.followUpDue
+                                ? "warning.main"
+                                : "text.secondary",
+                            }}
+                          >
+                            Due {followUpDueDate}
+                          </Typography>
+                        ) : null}
+                        <Typography variant="body2" color="text.secondary">
+                          {lead.followUp.sentAt ? "Sent" : "Marked done"} ·{" "}
+                          {followUpOutreachDate}
+                        </Typography>
+                        {followUpRepliedDate ? (
+                          <Typography variant="body2" color="text.secondary">
+                            Replied · {followUpRepliedDate}
+                          </Typography>
+                        ) : null}
+                        {lead.followUp.followUpCount > 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            Follow-ups · {lead.followUp.followUpCount}
+                            {followUpLastDate
+                              ? ` · last ${followUpLastDate}`
+                              : ""}
+                          </Typography>
+                        ) : null}
+                      </>
+                    ) : (
                       <Typography variant="body2" color="text.secondary">
                         No follow-up yet.
                       </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button size="small" disabled>
-                          Mark replied
-                        </Button>
-                        <Button size="small" disabled>
-                          Snooze
-                        </Button>
-                        <Button size="small" disabled>
-                          Close
-                        </Button>
-                      </Stack>
+                    )}
+                    {outreachMessage !== null && lead.followUp !== null ? (
+                      <Typography variant="caption" color="error">
+                        {outreachMessage}
+                      </Typography>
+                    ) : null}
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                      <Button
+                        size="small"
+                        disabled={!canFollowUp || followUpBusy}
+                        onClick={() => {
+                          void onSnoozeFollowUp();
+                        }}
+                      >
+                        Snooze 5 Days
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!canFollowUp || followUpBusy}
+                        onClick={() => {
+                          void onLogFollowUp();
+                        }}
+                      >
+                        Log Follow-up
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!canFollowUp || followUpBusy}
+                        onClick={() => {
+                          void onRecordFollowUpReply();
+                        }}
+                      >
+                        Record Lead Reply
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!canFollowUp || followUpBusy}
+                        onClick={() => {
+                          clearOutreachEdit();
+                          setCloseOpen(true);
+                        }}
+                      >
+                        Close Lead
+                      </Button>
                     </Stack>
-                  )
+                  </Stack>
                 ) : null}
               </Box>
             </Box>
@@ -595,6 +659,21 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
           void onSaveOutreach(values);
         }}
         onRevise={onReviseOutreach}
+      />
+      <CloseLeadDialog
+        open={closeOpen}
+        saving={followUpBusy}
+        message={outreachMessage}
+        onCancel={() => {
+          if (!followUpBusy) {
+            clearOutreachEdit();
+            setCloseOpen(false);
+          }
+        }}
+        onClearMessage={clearOutreachEdit}
+        onSave={(reason) => {
+          void onCloseFollowUp(reason);
+        }}
       />
     </Paper>
   );

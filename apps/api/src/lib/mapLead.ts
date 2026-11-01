@@ -17,12 +17,15 @@ import type {
 } from "@ithaca/db";
 import { leadLifecycleStatuses, leadSourceTypes } from "@ithaca/db";
 import {
+  leadFollowUpStatuses,
   leadPipelineStages,
   leadPriorities,
   workflowStages,
 } from "@ithaca/shared";
 import type {
   LeadDetail,
+  LeadFollowUpIndicator,
+  LeadFollowUpStatus,
   LeadListItem,
   LeadListStage,
   LeadPipelineStage,
@@ -167,12 +170,60 @@ function stageIndexFromLifecycle(lifecycleStatus: string): number {
   return lifecycleStageIndex[lifecycleStatus];
 }
 
-/** True when the lead is marked for follow-up, or the reply date has already passed. */
-function isFollowUpDue(lifecycleStatus: string, dueAt: Date | null): boolean {
-  return (
-    lifecycleStatus === "needs_follow_up" ||
-    (dueAt !== null && dueAt <= new Date())
-  );
+/**
+ * Follow-up column from the latest send or Done delivery and lifecycle.
+ * Closed leads and future open due dates show a dash. An expired snooze
+ * shows Due again. Do not write needs_follow_up.
+ */
+export function followUpIndicatorFrom(input: {
+  lifecycleStatus: string;
+  followUpStatus: string | null;
+  dueAt: Date | null;
+  repliedAt: Date | null;
+  now?: Date;
+}): LeadFollowUpIndicator {
+  const { lifecycleStatus, followUpStatus, dueAt, repliedAt } = input;
+  const now = input.now ?? new Date();
+
+  if (lifecycleStatus === "closed") {
+    return null;
+  }
+
+  if (followUpStatus === "replied" || repliedAt !== null) {
+    return "replied";
+  }
+
+  if (dueAt === null) {
+    return null;
+  }
+
+  if (dueAt > now) {
+    if (followUpStatus === "snoozed") {
+      return "snoozed";
+    }
+    return null;
+  }
+
+  return "due";
+}
+
+/** True when the Follow-up column shows Due. */
+function isFollowUpDue(indicator: LeadFollowUpIndicator): boolean {
+  return indicator === "due";
+}
+
+function followUpStatusFrom(
+  value: string | null,
+): LeadFollowUpStatus | null {
+  if (value === null) {
+    return null;
+  }
+
+  if (includesValue(leadFollowUpStatuses, value)) {
+    return value;
+  }
+
+  throw new Error(`Unexpected follow-up status "${value}".`);
 }
 
 /**
@@ -427,6 +478,13 @@ export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
     }
   }
 
+  const followUpIndicator = followUpIndicatorFrom({
+    lifecycleStatus: row.lifecycleStatus,
+    followUpStatus: row.followUpStatus,
+    dueAt: row.followUpDueAt,
+    repliedAt: row.repliedAt,
+  });
+
   return {
     leadId: row.leadId,
     companyName: row.companyName,
@@ -442,7 +500,8 @@ export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
       row.latestStage,
       row.latestOutreachStatus,
     ),
-    followUpDue: isFollowUpDue(row.lifecycleStatus, row.followUpDueAt),
+    followUpDue: isFollowUpDue(followUpIndicator),
+    followUpIndicator,
     icps: row.icps,
   };
 }
@@ -489,6 +548,12 @@ export function mapLeadDetail(input: {
   // A draft row is enough for the outreach section. Activity means it was sent or replied to.
   const hasOutreach = outreachRow !== null;
   const activeOutreach = hasOutreachActivity(outreachRow);
+  const followUpIndicator = followUpIndicatorFrom({
+    lifecycleStatus: row.lifecycleStatus,
+    followUpStatus: outreachRow?.followUpStatus ?? null,
+    dueAt: outreachRow?.followUpDueAt ?? null,
+    repliedAt: outreachRow?.repliedAt ?? null,
+  });
 
   return {
     leadId: row.leadId,
@@ -509,10 +574,8 @@ export function mapLeadDetail(input: {
       latestRunLead?.currentStage ?? null,
       outreachRow?.status ?? null,
     ),
-    followUpDue: isFollowUpDue(
-      row.lifecycleStatus,
-      outreachRow?.followUpDueAt ?? null,
-    ),
+    followUpDue: isFollowUpDue(followUpIndicator),
+    followUpIndicator,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
     contact:
@@ -580,6 +643,10 @@ export function mapLeadDetail(input: {
             sentAt: toIso(outreachRow.sentAt),
             dueAt: toIso(outreachRow.followUpDueAt),
             repliedAt: toIso(outreachRow.repliedAt),
+            followedUpAt: toIso(outreachRow.followedUpAt),
+            followUpCount: outreachRow.followUpCount ?? 0,
+            followUpStatus: followUpStatusFrom(outreachRow.followUpStatus),
+            closeReason: outreachRow.closeReason,
             deliveryStatus: outreachRow.deliveryStatus,
           }
         : null,

@@ -9,6 +9,8 @@ export {
 } from "./workflow.js";
 export type { SignInRequest, SignInResponse } from "./auth.js";
 export {
+  leadFollowUpIndicators,
+  leadFollowUpStatuses,
   leadListStages,
   leadPipelineStageStatuses,
   leadPipelineStages,
@@ -16,6 +18,8 @@ export {
 } from "./leads.js";
 export type {
   ApproveLeadOutreachResponse,
+  CloseLeadFollowUpRequest,
+  CloseLeadFollowUpResponse,
   CreateLeadRequest,
   CreateLeadResponse,
   DeleteLeadResponse,
@@ -24,13 +28,18 @@ export type {
   EditLeadOutreachResponse,
   EditLeadSummaryRequest,
   EditLeadSummaryResponse,
+  LogLeadFollowUpResponse,
+  RecordLeadFollowUpReplyResponse,
   RejectLeadOutreachResponse,
   ReviseLeadOutreachRequest,
   ReviseLeadOutreachResponse,
   SendLeadOutreachResponse,
+  SnoozeLeadFollowUpResponse,
   LeadContactDetail,
   LeadDetail,
   LeadFollowUpDetail,
+  LeadFollowUpIndicator,
+  LeadFollowUpStatus,
   LeadListIcp,
   LeadListItem,
   LeadListStage,

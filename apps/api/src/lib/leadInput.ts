@@ -42,6 +42,34 @@ export const outreachNotApprovedMessage = "Outreach draft is not approved.";
 export const outreachAlreadySentMessage = "Outreach message was already sent.";
 export const outreachAlreadyDoneMessage = "Outreach draft is already done.";
 export const outreachRecipientRequiredMessage = "Recipient is required.";
+export const followUpSnoozedMessage = "Follow-up snoozed.";
+export const followUpLoggedMessage = "Follow-up logged.";
+export const followUpReplyRecordedMessage = "Reply recorded.";
+export const followUpLeadClosedMessage = "Lead closed.";
+export const followUpUnavailableMessage =
+  "Lead has no send or Done delivery to follow up.";
+export const followUpClosedMessage = "Lead is already closed.";
+export const followUpAlreadyRepliedMessage = "Lead reply was already recorded.";
+export const followUpReasonMessage = "Close reason must be text.";
+
+/**
+ * Reads an optional close reason. Missing or blank becomes null.
+ * Any other non-text value is rejected.
+ */
+export function readCloseReason(
+  body: Record<string, unknown>,
+): string | null | { message: string } {
+  if (!("reason" in body) || body.reason === undefined) {
+    return null;
+  }
+
+  if (typeof body.reason !== "string") {
+    return { message: followUpReasonMessage };
+  }
+
+  const reason = body.reason.trim();
+  return reason.length > 0 ? reason : null;
+}
 
 function emailMessage(value: string | null, message: string): string | null {
   if (value === null || emailAddress.test(value)) {

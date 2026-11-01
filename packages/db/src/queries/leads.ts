@@ -39,6 +39,9 @@ export type LeadListDetailRow = Lead & {
   latestStage: string | null;
   latestOutreachStatus: string | null;
   followUpDueAt: Date | null;
+  followUpStatus: string | null;
+  repliedAt: Date | null;
+  followUpCount: number | null;
   icps: LeadListDetailIcp[];
 };
 
@@ -723,7 +726,11 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       status: outreachDrafts.status,
       createdAt: outreachDrafts.createdAt,
       outreachDraftId: outreachDrafts.outreachDraftId,
+      sentAt: emailDeliveries.sentAt,
       followUpDueAt: emailDeliveries.followUpDueAt,
+      followUpStatus: emailDeliveries.followUpStatus,
+      repliedAt: emailDeliveries.repliedAt,
+      followUpCount: emailDeliveries.followUpCount,
     })
     .from(outreachDrafts)
     .leftJoin(
@@ -737,31 +744,51 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
     );
 
   const latestOutreachStatusByLeadId = new Map<string, string>();
-  const followUpDueAtByLeadId = new Map<string, Date>();
+  const followUpByLeadId = new Map<
+    string,
+    {
+      followUpDueAt: Date | null;
+      followUpStatus: string | null;
+      repliedAt: Date | null;
+      followUpCount: number | null;
+    }
+  >();
   for (const row of outreachRows) {
     if (!latestOutreachStatusByLeadId.has(row.leadId)) {
       latestOutreachStatusByLeadId.set(row.leadId, row.status);
     }
 
-    if (row.followUpDueAt === null) {
+    if (followUpByLeadId.has(row.leadId)) {
       continue;
     }
 
-    const current = followUpDueAtByLeadId.get(row.leadId);
-    if (current === undefined || row.followUpDueAt < current) {
-      followUpDueAtByLeadId.set(row.leadId, row.followUpDueAt);
+    if (row.sentAt === null && row.followUpDueAt === null) {
+      continue;
     }
+
+    followUpByLeadId.set(row.leadId, {
+      followUpDueAt: row.followUpDueAt,
+      followUpStatus: row.followUpStatus,
+      repliedAt: row.repliedAt,
+      followUpCount: row.followUpCount,
+    });
   }
 
   const icpsByLeadId = await listIcpsByLeadIds(leadIds);
 
-  return rows.map((row) => ({
-    ...row,
-    latestStage: latestStageByLeadId.get(row.leadId) ?? null,
-    latestOutreachStatus: latestOutreachStatusByLeadId.get(row.leadId) ?? null,
-    followUpDueAt: followUpDueAtByLeadId.get(row.leadId) ?? null,
-    icps: icpsByLeadId.get(row.leadId) ?? [],
-  }));
+  return rows.map((row) => {
+    const followUp = followUpByLeadId.get(row.leadId);
+    return {
+      ...row,
+      latestStage: latestStageByLeadId.get(row.leadId) ?? null,
+      latestOutreachStatus: latestOutreachStatusByLeadId.get(row.leadId) ?? null,
+      followUpDueAt: followUp?.followUpDueAt ?? null,
+      followUpStatus: followUp?.followUpStatus ?? null,
+      repliedAt: followUp?.repliedAt ?? null,
+      followUpCount: followUp?.followUpCount ?? null,
+      icps: icpsByLeadId.get(row.leadId) ?? [],
+    };
+  });
 }
 
 export async function listSourceReferencesByLeadId(

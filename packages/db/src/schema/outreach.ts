@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -23,8 +24,16 @@ export type OutreachDraftStatus = (typeof outreachDraftStatuses)[number];
 export const emailDeliveryProviders = ["gmail"] as const;
 export type EmailDeliveryProvider = (typeof emailDeliveryProviders)[number];
 
-export const emailDeliveryStatuses = ["queued", "sent", "failed"] as const;
+export const emailDeliveryStatuses = [
+  "queued",
+  "sent",
+  "failed",
+  "marked_done",
+] as const;
 export type EmailDeliveryStatus = (typeof emailDeliveryStatuses)[number];
+
+export const followUpStatuses = ["open", "snoozed", "replied"] as const;
+export type FollowUpStatus = (typeof followUpStatuses)[number];
 
 export const outreachDrafts = pgTable(
   "outreach_drafts",
@@ -106,12 +115,20 @@ export const emailDeliveries = pgTable(
     openedAt: timestamp("opened_at", { withTimezone: true }),
     repliedAt: timestamp("replied_at", { withTimezone: true }),
     followUpDueAt: timestamp("follow_up_due_at", { withTimezone: true }),
+    followedUpAt: timestamp("followed_up_at", { withTimezone: true }),
+    followUpCount: integer("follow_up_count").notNull().default(0),
+    followUpStatus: text("follow_up_status"),
+    closeReason: text("close_reason"),
   },
   (table) => [
     check("email_deliveries_provider", sql`${table.provider} IN ('gmail')`),
     check(
       "email_deliveries_delivery_status",
-      sql`${table.deliveryStatus} IN ('queued', 'sent', 'failed')`,
+      sql`${table.deliveryStatus} IN ('queued', 'sent', 'failed', 'marked_done')`,
+    ),
+    check(
+      "email_deliveries_follow_up_status",
+      sql`${table.followUpStatus} IS NULL OR ${table.followUpStatus} IN ('open', 'snoozed', 'replied')`,
     ),
   ],
 );

@@ -1,6 +1,7 @@
 import {
   approveOutreachDraft,
   cancelOutreachDraftSend,
+  closeLeadFollowUp,
   completeOutreachDraftSend,
   deleteLead,
   findLatestOutreachByLeadId,
@@ -10,9 +11,12 @@ import {
   listLeadsWithDetails,
   listSourceReferencesByLeadId,
   listWorkflowRunLeadsByLeadId,
+  logLeadFollowUp,
   markOutreachDraftDone,
   prepareOutreachDraftSend,
+  recordLeadFollowUpReply,
   rejectOutreachDraft,
+  snoozeLeadFollowUp,
   updateLeadFacts,
   updateLeadQualificationOverride,
   updateLeadSummaryOverride,
@@ -22,6 +26,7 @@ import { sendEmail } from "@ithaca/email";
 import { reviseOutreachDraft } from "@ithaca/orchestrator";
 import type {
   ApproveLeadOutreachResponse,
+  CloseLeadFollowUpResponse,
   CreateLeadResponse,
   DeleteLeadResponse,
   DoneLeadOutreachResponse,
@@ -30,16 +35,26 @@ import type {
   LeadDetail,
   ListLeadListResponse,
   ListLeadsResponse,
+  LogLeadFollowUpResponse,
   OverrideLeadQualificationResponse,
+  RecordLeadFollowUpReplyResponse,
   RejectLeadOutreachResponse,
   ReviseLeadOutreachResponse,
   SendLeadOutreachResponse,
+  SnoozeLeadFollowUpResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
 import { qualificationLabelsForScore } from "@ithaca/shared";
 import { Router } from "express";
 import { sendFailure, signedInUserId } from "../lib/http.js";
 import {
+  followUpAlreadyRepliedMessage,
+  followUpClosedMessage,
+  followUpLeadClosedMessage,
+  followUpLoggedMessage,
+  followUpReplyRecordedMessage,
+  followUpSnoozedMessage,
+  followUpUnavailableMessage,
   isManualLeadError,
   leadDeletedMessage,
   leadStoredMessage,
@@ -62,6 +77,7 @@ import {
   outreachSentMessage,
   qualificationMissingMessage,
   qualificationOverriddenMessage,
+  readCloseReason,
   readManualLead,
   readOutreachEdit,
   readOutreachRevise,
@@ -622,6 +638,180 @@ leadsRouter.post("/:leadId/outreach/done", async (req, res) => {
 
     const response: DoneLeadOutreachResponse = {
       message: outreachDoneMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+function followUpConflictMessage(
+  result: "no_delivery" | "closed" | "replied",
+): string {
+  if (result === "no_delivery") {
+    return followUpUnavailableMessage;
+  }
+  if (result === "closed") {
+    return followUpClosedMessage;
+  }
+  return followUpAlreadyRepliedMessage;
+}
+
+// Snooze the follow-up due date five calendar days for an owned send or Done delivery.
+leadsRouter.post("/:leadId/follow-up/snooze", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const result = await snoozeLeadFollowUp(leadId, userId);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result !== "updated") {
+      res.status(409).json({ message: followUpConflictMessage(result) });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Follow-up was not snoozed.");
+    }
+
+    const response: SnoozeLeadFollowUpResponse = {
+      message: followUpSnoozedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Log a follow-up and schedule the next due date five calendar days out.
+leadsRouter.post("/:leadId/follow-up/log", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const result = await logLeadFollowUp(leadId, userId);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result !== "updated") {
+      res.status(409).json({ message: followUpConflictMessage(result) });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Follow-up was not logged.");
+    }
+
+    const response: LogLeadFollowUpResponse = {
+      message: followUpLoggedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Record a reply on an owned send or Done delivery.
+leadsRouter.post("/:leadId/follow-up/replied", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const result = await recordLeadFollowUpReply(leadId, userId);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result !== "updated") {
+      res.status(409).json({ message: followUpConflictMessage(result) });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Lead reply was not recorded.");
+    }
+
+    const response: RecordLeadFollowUpReplyResponse = {
+      message: followUpReplyRecordedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Close an owned lead after a send or Done delivery. Optional reason.
+leadsRouter.post("/:leadId/follow-up/close", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  const reason = readCloseReason(asRecord(req.body));
+  if (typeof reason === "object" && reason !== null && "message" in reason) {
+    res.status(400).json(reason);
+    return;
+  }
+
+  try {
+    const result = await closeLeadFollowUp(leadId, userId, reason);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result !== "updated") {
+      res.status(409).json({ message: followUpConflictMessage(result) });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Lead was not closed.");
+    }
+
+    const response: CloseLeadFollowUpResponse = {
+      message: followUpLeadClosedMessage,
       lead,
     };
     res.status(200).json(response);

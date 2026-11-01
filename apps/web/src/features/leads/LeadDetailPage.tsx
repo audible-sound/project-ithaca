@@ -69,9 +69,6 @@ export function LeadDetailPage(): ReactElement {
           <Typography variant="h1">
             {visibleLead ? visibleLead.companyName : "Lead detail"}
           </Typography>
-          <Button variant="contained" disabled>
-            Follow up
-          </Button>
         </Stack>
       </Stack>
       {detailStatus === "error" && detailMessage ? (

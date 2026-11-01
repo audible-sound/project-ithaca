@@ -22,7 +22,25 @@ export type LatestOutreachRow = {
   sentAt: Date | null;
   repliedAt: Date | null;
   followUpDueAt: Date | null;
+  followedUpAt: Date | null;
+  followUpCount: number | null;
+  followUpStatus: string | null;
+  closeReason: string | null;
 };
+
+export type OutreachFollowUpResult =
+  | "updated"
+  | "not_found"
+  | "no_delivery"
+  | "closed"
+  | "replied";
+
+/** Five calendar days after `from`, using UTC date parts. */
+export function followUpDueAtFrom(from: Date): Date {
+  const due = new Date(from.getTime());
+  due.setUTCDate(due.getUTCDate() + 5);
+  return due;
+}
 
 export type OutreachDraftInsert = {
   leadId: string;
@@ -112,6 +130,10 @@ export async function findLatestOutreachByLeadId(
       sentAt: emailDeliveries.sentAt,
       repliedAt: emailDeliveries.repliedAt,
       followUpDueAt: emailDeliveries.followUpDueAt,
+      followedUpAt: emailDeliveries.followedUpAt,
+      followUpCount: emailDeliveries.followUpCount,
+      followUpStatus: emailDeliveries.followUpStatus,
+      closeReason: emailDeliveries.closeReason,
     })
     .from(outreachDrafts)
     .leftJoin(
@@ -452,6 +474,9 @@ export async function prepareOutreachDraftSend(
     }
 
     if (draft.status === "sent") {
+      if (draft.deliveryStatus === "marked_done") {
+        return { status: "already_done" };
+      }
       if (draft.deliveryStatus !== null) {
         return { status: "already_sent" };
       }
@@ -495,6 +520,10 @@ export async function prepareOutreachDraftSend(
         openedAt: null,
         repliedAt: null,
         followUpDueAt: null,
+        followedUpAt: null,
+        followUpCount: 0,
+        followUpStatus: null,
+        closeReason: null,
       })
       .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
 
@@ -564,6 +593,9 @@ export async function completeOutreachDraftSend(
         providerMessageId: providerMessageId ?? null,
         sentAt: now,
         errorMessage: null,
+        followUpDueAt: followUpDueAtFrom(now),
+        followUpStatus: "open",
+        followUpCount: 0,
       })
       .where(
         and(
@@ -626,7 +658,8 @@ export async function cancelOutreachDraftSend(
 }
 
 /**
- * Marks an approved draft done without sending mail or creating a delivery.
+ * Marks an approved draft done without sending mail.
+ * Stores one marked_done delivery due five calendar days from now.
  */
 export async function markOutreachDraftDone(
   leadId: string,
@@ -673,6 +706,9 @@ export async function markOutreachDraftDone(
     }
 
     if (draft.status === "sent") {
+      if (draft.deliveryStatus === "marked_done") {
+        return "already_done";
+      }
       if (draft.deliveryStatus !== null) {
         return "already_sent";
       }
@@ -700,6 +736,22 @@ export async function markOutreachDraftDone(
       return "not_drafted";
     }
 
+    await tx.insert(emailDeliveries).values({
+      outreachDraftId: draft.outreachDraftId,
+      provider: "gmail",
+      providerMessageId: null,
+      deliveryStatus: "marked_done",
+      errorMessage: null,
+      sentAt: null,
+      openedAt: null,
+      repliedAt: null,
+      followUpDueAt: followUpDueAtFrom(now),
+      followedUpAt: null,
+      followUpCount: 0,
+      followUpStatus: "open",
+      closeReason: null,
+    });
+
     await tx
       .update(leads)
       .set({ lifecycleStatus: "outreach_sent", updatedAt: now })
@@ -719,6 +771,246 @@ export async function markOutreachDraftDone(
           eq(workflowRunLeads.leadId, leadId),
         ),
       );
+
+    return "updated";
+  });
+}
+
+type FollowUpDeliveryRow = {
+  emailDeliveryId: string;
+  followUpStatus: string | null;
+  followUpCount: number;
+  repliedAt: Date | null;
+  lifecycleStatus: string;
+};
+
+/**
+ * Latest send or Done delivery for an owned lead, or why the action is rejected.
+ */
+async function findOwnedFollowUpDelivery(
+  leadId: string,
+  userId: string,
+): Promise<
+  | { status: "ready"; delivery: FollowUpDeliveryRow }
+  | { status: "not_found" }
+  | { status: "no_delivery" }
+  | { status: "closed" }
+  | { status: "replied" }
+> {
+  const rows = await requireDb()
+    .select({
+      emailDeliveryId: emailDeliveries.emailDeliveryId,
+      followUpStatus: emailDeliveries.followUpStatus,
+      followUpCount: emailDeliveries.followUpCount,
+      repliedAt: emailDeliveries.repliedAt,
+      sentAt: emailDeliveries.sentAt,
+      followUpDueAt: emailDeliveries.followUpDueAt,
+      deliveryStatus: emailDeliveries.deliveryStatus,
+      lifecycleStatus: leads.lifecycleStatus,
+      createdByUserId: leads.createdByUserId,
+      deletedAt: leads.deletedAt,
+    })
+    .from(outreachDrafts)
+    .innerJoin(leads, eq(leads.leadId, outreachDrafts.leadId))
+    .innerJoin(
+      emailDeliveries,
+      eq(emailDeliveries.outreachDraftId, outreachDrafts.outreachDraftId),
+    )
+    .where(eq(outreachDrafts.leadId, leadId))
+    .orderBy(desc(outreachDrafts.createdAt), desc(outreachDrafts.outreachDraftId));
+
+  const owned = rows.find(
+    (row) => row.createdByUserId === userId && row.deletedAt === null,
+  );
+  if (owned === undefined) {
+    const anyLead = await requireDb()
+      .select({ leadId: leads.leadId })
+      .from(leads)
+      .where(
+        and(
+          eq(leads.leadId, leadId),
+          eq(leads.createdByUserId, userId),
+          isNull(leads.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (anyLead[0] === undefined) {
+      return { status: "not_found" };
+    }
+    return { status: "no_delivery" };
+  }
+
+  const delivery = rows.find(
+    (row) =>
+      row.createdByUserId === userId &&
+      row.deletedAt === null &&
+      (row.sentAt !== null || row.followUpDueAt !== null),
+  );
+  if (delivery === undefined) {
+    return { status: "no_delivery" };
+  }
+
+  if (delivery.lifecycleStatus === "closed") {
+    return { status: "closed" };
+  }
+
+  if (
+    delivery.followUpStatus === "replied" ||
+    delivery.repliedAt !== null
+  ) {
+    return { status: "replied" };
+  }
+
+  return {
+    status: "ready",
+    delivery: {
+      emailDeliveryId: delivery.emailDeliveryId,
+      followUpStatus: delivery.followUpStatus,
+      followUpCount: delivery.followUpCount,
+      repliedAt: delivery.repliedAt,
+      lifecycleStatus: delivery.lifecycleStatus,
+    },
+  };
+}
+
+/**
+ * Moves follow_up_due_at five calendar days from now and sets status snoozed.
+ */
+export async function snoozeLeadFollowUp(
+  leadId: string,
+  userId: string,
+): Promise<OutreachFollowUpResult> {
+  const now = new Date();
+  const found = await findOwnedFollowUpDelivery(leadId, userId);
+  if (found.status !== "ready") {
+    return found.status;
+  }
+
+  const rows = await requireDb()
+    .update(emailDeliveries)
+    .set({
+      followUpDueAt: followUpDueAtFrom(now),
+      followUpStatus: "snoozed",
+    })
+    .where(eq(emailDeliveries.emailDeliveryId, found.delivery.emailDeliveryId))
+    .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+
+  if (rows[0] === undefined) {
+    return "not_found";
+  }
+
+  return "updated";
+}
+
+/**
+ * Records a follow-up, increments the count, and schedules the next due date.
+ */
+export async function logLeadFollowUp(
+  leadId: string,
+  userId: string,
+): Promise<OutreachFollowUpResult> {
+  const now = new Date();
+  const found = await findOwnedFollowUpDelivery(leadId, userId);
+  if (found.status !== "ready") {
+    return found.status;
+  }
+
+  const rows = await requireDb()
+    .update(emailDeliveries)
+    .set({
+      followedUpAt: now,
+      followUpCount: found.delivery.followUpCount + 1,
+      followUpStatus: "open",
+      followUpDueAt: followUpDueAtFrom(now),
+    })
+    .where(eq(emailDeliveries.emailDeliveryId, found.delivery.emailDeliveryId))
+    .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+
+  if (rows[0] === undefined) {
+    return "not_found";
+  }
+
+  return "updated";
+}
+
+/**
+ * Records a reply on the send or Done delivery. Leaves the due date stored.
+ */
+export async function recordLeadFollowUpReply(
+  leadId: string,
+  userId: string,
+): Promise<OutreachFollowUpResult> {
+  const now = new Date();
+  const found = await findOwnedFollowUpDelivery(leadId, userId);
+  if (found.status !== "ready") {
+    return found.status;
+  }
+
+  const rows = await requireDb()
+    .update(emailDeliveries)
+    .set({
+      repliedAt: now,
+      followUpStatus: "replied",
+    })
+    .where(eq(emailDeliveries.emailDeliveryId, found.delivery.emailDeliveryId))
+    .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+
+  if (rows[0] === undefined) {
+    return "not_found";
+  }
+
+  return "updated";
+}
+
+/**
+ * Closes the lead, clears the due date, and stores an optional reason.
+ */
+export async function closeLeadFollowUp(
+  leadId: string,
+  userId: string,
+  reason: string | null,
+): Promise<OutreachFollowUpResult> {
+  const now = new Date();
+  const found = await findOwnedFollowUpDelivery(leadId, userId);
+  if (found.status === "replied") {
+    // Reply already recorded still allows close? Plan: "These cases return 409:
+    // there is no send or Done delivery, the lead is already closed, or a reply
+    // was already recorded." So close is also rejected when replied.
+    return "replied";
+  }
+  if (found.status !== "ready") {
+    return found.status;
+  }
+
+  return requireDb().transaction(async (tx) => {
+    const deliveryRows = await tx
+      .update(emailDeliveries)
+      .set({
+        followUpDueAt: null,
+        closeReason: reason,
+      })
+      .where(eq(emailDeliveries.emailDeliveryId, found.delivery.emailDeliveryId))
+      .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+
+    if (deliveryRows[0] === undefined) {
+      return "not_found";
+    }
+
+    const leadRows = await tx
+      .update(leads)
+      .set({ lifecycleStatus: "closed", updatedAt: now })
+      .where(
+        and(
+          eq(leads.leadId, leadId),
+          eq(leads.createdByUserId, userId),
+          isNull(leads.deletedAt),
+        ),
+      )
+      .returning({ leadId: leads.leadId });
+
+    if (leadRows[0] === undefined) {
+      return "not_found";
+    }
 
     return "updated";
   });
