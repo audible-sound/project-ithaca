@@ -451,26 +451,3 @@ export function parseCompanyProfile(input: {
 
   return profile;
 }
-
-/**
- * True when stored description text is still an Exa company page dump.
- * @param value - The description currently saved on the company.
- * @returns Whether that text should be replaced by a parsed write-up.
- */
-export function isCompanyPageText(value: string): boolean {
-  const text = value.trim();
-  if (text.startsWith("#")) {
-    return true;
-  }
-  if (
-    /##\s+(?:About|Categories|Locations|Company Details|Workforce|Social)\b/i.test(
-      text,
-    )
-  ) {
-    return true;
-  }
-
-  return /(?:^|\n|\s-\s)\s*(?:[-*]\s+)?(?:Industry|Emails|Homepage|LinkedIn)\s*:/i.test(
-    text,
-  );
-}

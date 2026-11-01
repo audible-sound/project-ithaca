@@ -1,4 +1,3 @@
-export { isCompanyPageText, parseStoredCompanyPage } from "./companyProfile.js";
 export { draftOutreach } from "./draftOutreach.js";
 export { reviseOutreach } from "./reviseOutreach.js";
 export type {

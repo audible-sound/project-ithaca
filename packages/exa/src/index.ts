@@ -1,4 +1,4 @@
-export { parseCompanyProfile, isCompanyPageText } from "./parseCompanyProfile.js";
+export { parseCompanyProfile } from "./parseCompanyProfile.js";
 export type {
   CompanyProfileSizeBand,
   ParsedCompanyProfile,

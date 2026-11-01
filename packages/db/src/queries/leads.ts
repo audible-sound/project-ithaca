@@ -103,33 +103,6 @@ export type IdentifiedLeadDraft = {
   rawSnippet?: string;
 };
 
-/** One identified company and the latest Exa page saved for it. */
-export type CompanyProfileSource = {
-  companyId: string;
-  website: string | null;
-  industry: string | null;
-  location: string | null;
-  sizeBand: string | null;
-  description: string | null;
-  email: string | null;
-  phone: string | null;
-  linkedinUrl: string | null;
-  rawSnippet: unknown;
-};
-
-/** Fields to write onto a company. Only include a key when that column should change. */
-export type CompanyProfileFill = {
-  companyId: string;
-  website?: string;
-  industry?: string;
-  location?: string;
-  sizeBand?: CompanySizeBand;
-  description?: string | null;
-  email?: string;
-  phone?: string;
-  linkedinUrl?: string;
-};
-
 export type InsertIdentifiedLeadResult = {
   leadId: string;
   storedContact: boolean;
@@ -1292,99 +1265,6 @@ export async function updateLeadFacts(
       .where(eq(leads.leadId, leadId));
 
     return leadId;
-  });
-}
-
-/**
- * Latest Exa page stored for each company.
- * @returns One row per company that has an Exa source snippet.
- */
-export async function listCompanyProfileSources(): Promise<CompanyProfileSource[]> {
-  const rows = await requireDb()
-    .select({
-      companyId: companies.companyId,
-      website: companies.website,
-      industry: companies.industry,
-      location: companies.location,
-      sizeBand: companies.sizeBand,
-      description: companies.description,
-      email: companies.email,
-      phone: companies.phone,
-      linkedinUrl: companies.linkedinUrl,
-      rawSnippet: sourceReferences.rawSnippet,
-    })
-    .from(sourceReferences)
-    .innerJoin(companies, eq(sourceReferences.companyId, companies.companyId))
-    .where(eq(sourceReferences.sourceProvider, "exa"))
-    .orderBy(desc(sourceReferences.retrievedAt), desc(sourceReferences.sourceReferenceId));
-
-  const seen = new Set<string>();
-  const sources: CompanyProfileSource[] = [];
-  for (const row of rows) {
-    if (seen.has(row.companyId)) {
-      continue;
-    }
-    seen.add(row.companyId);
-    sources.push(row);
-  }
-
-  return sources;
-}
-
-/**
- * Writes company facts that the caller has already decided should change.
- * @param fills - One patch per company. An empty list does nothing.
- */
-export async function fillCompanyProfiles(fills: CompanyProfileFill[]): Promise<void> {
-  if (fills.length === 0) {
-    return;
-  }
-
-  const now = new Date();
-  await requireDb().transaction(async (tx) => {
-    for (const fill of fills) {
-      const patch: {
-        website?: string;
-        industry?: string;
-        location?: string;
-        sizeBand?: CompanySizeBand;
-        description?: string | null;
-        email?: string;
-        phone?: string;
-        linkedinUrl?: string;
-        updatedAt: Date;
-      } = { updatedAt: now };
-
-      if (fill.website !== undefined) {
-        patch.website = fill.website;
-      }
-      if (fill.industry !== undefined) {
-        patch.industry = fill.industry;
-      }
-      if (fill.location !== undefined) {
-        patch.location = fill.location;
-      }
-      if (fill.sizeBand !== undefined) {
-        patch.sizeBand = fill.sizeBand;
-      }
-      if (fill.description !== undefined) {
-        patch.description = fill.description;
-      }
-      if (fill.email !== undefined) {
-        patch.email = fill.email;
-      }
-      if (fill.phone !== undefined) {
-        patch.phone = fill.phone;
-      }
-      if (fill.linkedinUrl !== undefined) {
-        patch.linkedinUrl = fill.linkedinUrl;
-      }
-
-      await tx
-        .update(companies)
-        .set(patch)
-        .where(eq(companies.companyId, fill.companyId));
-    }
   });
 }
 

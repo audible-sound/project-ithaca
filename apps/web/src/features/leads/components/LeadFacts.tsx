@@ -5,7 +5,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { useAuthStore } from "../../../stores/authStore";
 
 type LeadFactsProps = {
@@ -92,6 +92,7 @@ function FactGroup({ title, children }: { title: string; children: ReactElement 
 }
 
 export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
+  const location = useLocation();
   const userId = useAuthStore((state) => state.userId);
   const canEdit = lead.ownerId !== null && lead.ownerId === userId;
   const contact = lead.contact;
@@ -110,6 +111,7 @@ export function LeadFacts({ lead }: LeadFactsProps): ReactElement {
                 size="small"
                 component={Link}
                 to={`/leads/${lead.leadId}/edit`}
+                state={location.state}
               >
                 Edit
               </Button>

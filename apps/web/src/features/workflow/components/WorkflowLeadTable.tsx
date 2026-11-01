@@ -12,6 +12,7 @@ import { workflowLabel } from "../workflowLabels";
 import { WorkflowStatusText } from "./WorkflowStatusText";
 
 type WorkflowLeadTableProps = {
+  workflowRunId: string;
   leads: WorkflowRunLead[];
   emptyMessage?: string;
 };
@@ -25,6 +26,7 @@ const headerCellSx = {
 } as const;
 
 export function WorkflowLeadTable({
+  workflowRunId,
   leads,
   emptyMessage = "No leads in this run.",
 }: WorkflowLeadTableProps): ReactElement {
@@ -58,6 +60,7 @@ export function WorkflowLeadTable({
                     variant="body2"
                     component={Link}
                     to={`/leads/${lead.leadId}`}
+                    state={{ returnTo: `/workflow/${workflowRunId}` }}
                     sx={{
                       color: "primary.main",
                       textDecoration: "none",

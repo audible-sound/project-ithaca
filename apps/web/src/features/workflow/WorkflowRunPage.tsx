@@ -96,6 +96,7 @@ export function WorkflowRunPage(): ReactElement {
           <Stack spacing={2}>
             <Typography variant="h6">Leads in this run</Typography>
             <WorkflowLeadTable
+              workflowRunId={visibleRun.workflowRunId}
               leads={visibleRun.leads}
               emptyMessage={
                 searchReturnedNoCompanies(visibleRun)

@@ -4,7 +4,7 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useEffect, type ReactElement } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { useLeadStore } from "../../stores/leadStore";
 import { LeadFacts } from "./components/LeadFacts";
 import { LeadPipeline } from "./components/LeadPipeline";
@@ -19,8 +19,23 @@ const linkSx = {
   "&:hover": { textDecoration: "underline" },
 } as const;
 
+function backTarget(state: unknown): string {
+  if (
+    state !== null &&
+    typeof state === "object" &&
+    "returnTo" in state &&
+    typeof state.returnTo === "string" &&
+    state.returnTo.startsWith("/workflow/")
+  ) {
+    return state.returnTo;
+  }
+
+  return "/leads";
+}
+
 export function LeadDetailPage(): ReactElement {
   const { leadId } = useParams();
+  const location = useLocation();
   const lead = useLeadStore((state) => state.lead);
   const detailStatus = useLeadStore((state) => state.detailStatus);
   const detailMessage = useLeadStore((state) => state.detailMessage);
@@ -38,7 +53,12 @@ export function LeadDetailPage(): ReactElement {
   return (
     <Stack spacing={3}>
       <Stack spacing={1}>
-        <Typography variant="body2" component={Link} to="/leads" sx={linkSx}>
+        <Typography
+          variant="body2"
+          component={Link}
+          to={backTarget(location.state)}
+          sx={linkSx}
+        >
           <ArrowBack fontSize="inherit" />
           Back
         </Typography>

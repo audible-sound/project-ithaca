@@ -12,7 +12,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import type { LeadDetail } from "@ithaca/shared";
 import { useEffect, useState, type ReactElement, type SubmitEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useAuthStore } from "../../stores/authStore";
 import { useLeadStore, type LeadFormValues } from "../../stores/leadStore";
 import { companySizeBands, companySizeLabel } from "./leadLabels";
@@ -67,6 +67,7 @@ const fieldGrid = {
 export function LeadFormPage(): ReactElement {
   const { leadId } = useParams();
   const editing = leadId !== undefined;
+  const location = useLocation();
   const navigate = useNavigate();
   const userId = useAuthStore((state) => state.userId);
   const formMessage = useLeadStore((state) => state.formMessage);
@@ -123,7 +124,7 @@ export function LeadFormPage(): ReactElement {
     if (editing && leadId) {
       void updateLead(leadId, values).then((saved) => {
         if (saved) {
-          navigate(`/leads/${leadId}`);
+          navigate(`/leads/${leadId}`, { state: location.state });
         }
       });
       return;
@@ -345,7 +346,11 @@ export function LeadFormPage(): ReactElement {
               >
                 Save lead
               </Button>
-              <Button component={Link} to={editing && leadId ? `/leads/${leadId}` : "/leads"}>
+              <Button
+                component={Link}
+                to={editing && leadId ? `/leads/${leadId}` : "/leads"}
+                state={location.state}
+              >
                 Cancel
               </Button>
             </Stack>
