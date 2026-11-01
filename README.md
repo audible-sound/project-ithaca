@@ -11,14 +11,15 @@ Multi-agent B2B lead management system.
 | Backend | Node.js, Express, TypeScript (`apps/api`) |
 | Orchestrator | Co-located package (`packages/orchestrator`) imported by the API |
 | Database | PostgreSQL 16 with Drizzle (`packages/db`, Docker Compose, host port `5433`) |
-| Agents / model / Exa / email | Stub packages under `packages/` |
+| Email catcher | Mailpit (Docker Compose, SMTP `127.0.0.1:1025`, inbox `127.0.0.1:8025`) |
+| Agents / model / Exa | Packages under `packages/` |
 
 
 ## Prerequisites
 
 - Node.js 22+
 - [pnpm](https://pnpm.io/) 9 (`corepack enable` then `corepack prepare pnpm@9.15.0 --activate`)
-- Docker (for Postgres)
+- Docker (for Postgres and Mailpit)
 
 ## Quick start
 
@@ -32,6 +33,9 @@ pnpm dev
 
 - Web: http://localhost:5173
 - API: http://localhost:3001
+- Mailpit inbox: http://127.0.0.1:8025
+
+On a hosted deploy where the API runs in Compose next to Mailpit, set `SMTP_HOST=mailpit`, keep port `1025` on the private network only, and set `MP_UI_AUTH_FILE` before exposing the inbox.
 
 ## Workflow
 
@@ -67,7 +71,7 @@ packages/orchestrator  Sequential lead workflow shell
 packages/agents     identify / qualify / summarize / draft stubs
 packages/ai-model   Model-layer stub (Gemini later)
 packages/exa        Exa search client stub
-packages/email      Gmail client stub
+packages/email      SMTP client (Mailpit in local Docker)
 packages/tsconfig   Shared TypeScript configs
 packages/eslint-config  Shared ESLint config
 ```
