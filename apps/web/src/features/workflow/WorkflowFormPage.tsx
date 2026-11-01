@@ -2,11 +2,13 @@ import type { IdealCustomerProfile } from "@ithaca/shared";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState, type ReactElement, type SubmitEvent } from "react";
 import { Link, useNavigate } from "react-router";
@@ -60,15 +62,23 @@ export function WorkflowFormPage(): ReactElement {
   const clearStart = useWorkflowStore((state) => state.clearStart);
   const [icpId, setIcpId] = useState("");
   const [leadIds, setLeadIds] = useState<string[]>([]);
+  const [useSelectedLeadsOnly, setUseSelectedLeadsOnly] = useState(false);
 
   const activeProfiles = profiles.filter((profile) => profile.isActive);
   const selected = activeProfiles.find((profile) => profile.icpId === icpId);
+  const hasSelectedLeads = leadIds.length > 0;
 
   useEffect(() => {
     clearStart();
     void loadProfiles();
     void loadLeads();
   }, [clearStart, loadProfiles, loadLeads]);
+
+  useEffect(() => {
+    if (!hasSelectedLeads && useSelectedLeadsOnly) {
+      setUseSelectedLeadsOnly(false);
+    }
+  }, [hasSelectedLeads, useSelectedLeadsOnly]);
 
   function toggleLead(leadId: string): void {
     setLeadIds((current) =>
@@ -80,7 +90,11 @@ export function WorkflowFormPage(): ReactElement {
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault();
-    void startRun({ icpId, leadIds }).then((workflowRunId) => {
+    void startRun({
+      icpId,
+      leadIds,
+      useSelectedLeadsOnly: hasSelectedLeads && useSelectedLeadsOnly,
+    }).then((workflowRunId) => {
       if (workflowRunId) {
         navigate(`/workflow/${workflowRunId}`);
       }
@@ -148,7 +162,22 @@ export function WorkflowFormPage(): ReactElement {
             leads={leads}
             leadIds={leadIds}
             status={leadStatus}
+            useSelectedLeadsOnly={useSelectedLeadsOnly}
             onToggleLead={toggleLead}
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={useSelectedLeadsOnly}
+                disabled={!hasSelectedLeads}
+                onChange={(_event, checked) => {
+                  setUseSelectedLeadsOnly(checked);
+                }}
+                size="small"
+              />
+            }
+            label="Use selected leads only"
           />
 
           {startMessage ? (

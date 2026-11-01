@@ -206,9 +206,84 @@ async function mapWithLimit<T, R>(
   return results;
 }
 
+export type IdentifyLeadsOptions = {
+  /** Company websites already on the run. Their hostnames are left out of the Exa search. */
+  excludeWebsites?: string[];
+  /** Company names already on the run. A same-name hit is dropped before contact lookup. */
+  excludeCompanyNames?: string[];
+};
+
+/**
+ * Turns a company website into an Exa excludeDomains hostname.
+ * The scheme, path, and a leading www. are removed.
+ */
+export function websiteExcludeDomain(
+  website: string,
+): string | undefined {
+  const trimmed = website.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  const withoutScheme = trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  const authority = withoutScheme.split(/[/?#]/, 1)[0]?.trim() ?? "";
+  if (authority.length === 0) {
+    return undefined;
+  }
+
+  const hostPart = authority.includes("@")
+    ? (authority.split("@").pop() ?? "")
+    : authority;
+  const host = hostPart.replace(/^\[|\]$/g, "").split(":", 1)[0]?.trim().toLowerCase() ?? "";
+  if (host.length === 0 || host.includes(" ")) {
+    return undefined;
+  }
+
+  return host.startsWith("www.") ? host.slice(4) : host;
+}
+
+function excludeDomainsFromWebsites(
+  websites: readonly string[] | undefined,
+): string[] {
+  if (websites === undefined) {
+    return [];
+  }
+
+  const domains: string[] = [];
+  const seen = new Set<string>();
+  for (const website of websites) {
+    const domain = websiteExcludeDomain(website);
+    if (domain === undefined || seen.has(domain)) {
+      continue;
+    }
+    seen.add(domain);
+    domains.push(domain);
+  }
+  return domains;
+}
+
+function excludedCompanyNameSet(
+  names: readonly string[] | undefined,
+): Set<string> {
+  const excluded = new Set<string>();
+  if (names === undefined) {
+    return excluded;
+  }
+
+  for (const name of names) {
+    const next = name.trim().toLowerCase();
+    if (next.length > 0) {
+      excluded.add(next);
+    }
+  }
+  return excluded;
+}
+
 export async function identifyLeads(
   icp: IdealCustomerProfileInput,
+  options?: IdentifyLeadsOptions,
 ): Promise<AgentStageResult> {
+  const excludeDomains = excludeDomainsFromWebsites(options?.excludeWebsites);
   const search = await searchCompanies({
     industries: icp.industries,
     locations: icp.locations,
@@ -219,15 +294,20 @@ export async function identifyLeads(
     ...(icp.companySizeMax === undefined
       ? {}
       : { companySizeMax: icp.companySizeMax }),
+    ...(excludeDomains.length > 0 ? { excludeDomains } : {}),
   });
+  const excludedNames = excludedCompanyNameSet(options?.excludeCompanyNames);
+  const companies = search.companies.filter(
+    (company) => !excludedNames.has(company.name.trim().toLowerCase()),
+  );
   const clients: CompanyContactClients = {
     searchPeople,
     enrichEmail: enrichContactEmail,
   };
-  const contacts = await mapWithLimit(search.companies, contactLookupLimit, (company) =>
+  const contacts = await mapWithLimit(companies, contactLookupLimit, (company) =>
     attachCompanyContact(company.name, company.location, clients),
   );
-  const candidates = search.companies.map((company, index) =>
+  const candidates = companies.map((company, index) =>
     toIdentifiedLeadCandidate(company, contacts[index]),
   );
   const result: AgentStageResult = {

@@ -1,7 +1,7 @@
 import {
   approveOutreachDraft,
-  cancelOutreachDraftSend,
   closeLeadFollowUp,
+  failOutreachDraftSend,
   completeOutreachDraftSend,
   deleteLead,
   findLatestOutreachByLeadId,
@@ -557,14 +557,17 @@ leadsRouter.post("/:leadId/outreach/send", async (req, res) => {
         body: prepared.body,
       });
     } catch (err) {
-      await cancelOutreachDraftSend(prepared.emailDeliveryId);
+      const message =
+        err instanceof Error ? err.message : "SMTP send failed.";
+      await failOutreachDraftSend(prepared.emailDeliveryId, message);
       throw err;
     }
 
     if (mailResult.status !== "sent") {
-      await cancelOutreachDraftSend(prepared.emailDeliveryId);
+      const message = mailResult.errorMessage ?? "SMTP send failed.";
+      await failOutreachDraftSend(prepared.emailDeliveryId, message);
       res.status(502).json({
-        message: mailResult.errorMessage ?? "SMTP send failed.",
+        message,
       });
       return;
     }

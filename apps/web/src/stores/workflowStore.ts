@@ -29,6 +29,7 @@ type WorkflowStore = {
   startRun: (input: {
     icpId: string;
     leadIds: string[];
+    useSelectedLeadsOnly: boolean;
   }) => Promise<string | null>;
   clearStart: () => void;
 };
@@ -165,7 +166,7 @@ export const useWorkflowStore = create<WorkflowStore>()((set, get) => ({
       });
     }
   },
-  startRun: async ({ icpId, leadIds }) => {
+  startRun: async ({ icpId, leadIds, useSelectedLeadsOnly }) => {
     const trimmedIcpId = icpId.trim();
     if (!trimmedIcpId) {
       set({ startStatus: "error", startMessage: "ICP is required." });
@@ -181,6 +182,9 @@ export const useWorkflowStore = create<WorkflowStore>()((set, get) => ({
     const body: StartWorkflowRunRequest = { icpId: trimmedIcpId };
     if (leadIds.length > 0) {
       body.leadIds = leadIds;
+    }
+    if (useSelectedLeadsOnly) {
+      body.useSelectedLeadsOnly = true;
     }
 
     set({ startStatus: "loading", startMessage: null });

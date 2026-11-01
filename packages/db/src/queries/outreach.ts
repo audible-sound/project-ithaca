@@ -487,6 +487,17 @@ export async function prepareOutreachDraftSend(
       return { status: "not_approved" };
     }
 
+    if (
+      draft.deliveryStatus !== null &&
+      draft.deliveryStatus !== "queued" &&
+      draft.deliveryStatus !== "failed"
+    ) {
+      if (draft.deliveryStatus === "marked_done") {
+        return { status: "already_done" };
+      }
+      return { status: "already_sent" };
+    }
+
     const subject = draft.subject?.trim() ?? "";
     const body = draft.body?.trim() ?? "";
     if (subject.length === 0 || body.length === 0) {
@@ -508,33 +519,61 @@ export async function prepareOutreachDraftSend(
       return { status: "no_recipient" };
     }
 
-    const deliveryRows = await tx
-      .insert(emailDeliveries)
-      .values({
-        outreachDraftId: draft.outreachDraftId,
-        provider: "gmail",
-        providerMessageId: null,
-        deliveryStatus: "queued",
-        errorMessage: null,
-        sentAt: null,
-        openedAt: null,
-        repliedAt: null,
-        followUpDueAt: null,
-        followedUpAt: null,
-        followUpCount: 0,
-        followUpStatus: null,
-        closeReason: null,
-      })
-      .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+    let emailDeliveryId: string | undefined;
 
-    const delivery = deliveryRows[0];
-    if (delivery === undefined) {
+    if (
+      draft.deliveryStatus === "queued" ||
+      draft.deliveryStatus === "failed"
+    ) {
+      const reused = await tx
+        .update(emailDeliveries)
+        .set({
+          deliveryStatus: "queued",
+          providerMessageId: null,
+          errorMessage: null,
+          sentAt: null,
+          openedAt: null,
+          repliedAt: null,
+          followUpDueAt: null,
+          followedUpAt: null,
+          followUpCount: 0,
+          followUpStatus: null,
+          closeReason: null,
+        })
+        .where(eq(emailDeliveries.outreachDraftId, draft.outreachDraftId))
+        .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+
+      emailDeliveryId = reused[0]?.emailDeliveryId;
+    } else {
+      const deliveryRows = await tx
+        .insert(emailDeliveries)
+        .values({
+          outreachDraftId: draft.outreachDraftId,
+          provider: "gmail",
+          providerMessageId: null,
+          deliveryStatus: "queued",
+          errorMessage: null,
+          sentAt: null,
+          openedAt: null,
+          repliedAt: null,
+          followUpDueAt: null,
+          followedUpAt: null,
+          followUpCount: 0,
+          followUpStatus: null,
+          closeReason: null,
+        })
+        .returning({ emailDeliveryId: emailDeliveries.emailDeliveryId });
+
+      emailDeliveryId = deliveryRows[0]?.emailDeliveryId;
+    }
+
+    if (emailDeliveryId === undefined) {
       return { status: "not_drafted" };
     }
 
     return {
       status: "queued",
-      emailDeliveryId: delivery.emailDeliveryId,
+      emailDeliveryId,
       subject,
       body,
       contactEmail,
@@ -642,13 +681,21 @@ export async function completeOutreachDraftSend(
 }
 
 /**
- * Removes a queued delivery after a failed send. Leaves the draft approved.
+ * Marks a queued delivery failed after SMTP fails. Leaves the draft approved
+ * so the next send can reuse this row.
  */
-export async function cancelOutreachDraftSend(
+export async function failOutreachDraftSend(
   emailDeliveryId: string,
+  errorMessage: string,
 ): Promise<void> {
   await requireDb()
-    .delete(emailDeliveries)
+    .update(emailDeliveries)
+    .set({
+      deliveryStatus: "failed",
+      errorMessage,
+      providerMessageId: null,
+      sentAt: null,
+    })
     .where(
       and(
         eq(emailDeliveries.emailDeliveryId, emailDeliveryId),
@@ -689,6 +736,7 @@ export async function markOutreachDraftDone(
         outreachDraftId: outreachDrafts.outreachDraftId,
         workflowRunId: outreachDrafts.workflowRunId,
         status: outreachDrafts.status,
+        emailDeliveryId: emailDeliveries.emailDeliveryId,
         deliveryStatus: emailDeliveries.deliveryStatus,
       })
       .from(outreachDrafts)
@@ -719,7 +767,11 @@ export async function markOutreachDraftDone(
       return "not_approved";
     }
 
-    if (draft.deliveryStatus !== null) {
+    if (
+      draft.deliveryStatus !== null &&
+      draft.deliveryStatus !== "queued" &&
+      draft.deliveryStatus !== "failed"
+    ) {
       return "already_sent";
     }
 
@@ -736,11 +788,10 @@ export async function markOutreachDraftDone(
       return "not_drafted";
     }
 
-    await tx.insert(emailDeliveries).values({
-      outreachDraftId: draft.outreachDraftId,
-      provider: "gmail",
+    const markedDone = {
+      provider: "gmail" as const,
       providerMessageId: null,
-      deliveryStatus: "marked_done",
+      deliveryStatus: "marked_done" as const,
       errorMessage: null,
       sentAt: null,
       openedAt: null,
@@ -748,9 +799,21 @@ export async function markOutreachDraftDone(
       followUpDueAt: followUpDueAtFrom(now),
       followedUpAt: null,
       followUpCount: 0,
-      followUpStatus: "open",
+      followUpStatus: "open" as const,
       closeReason: null,
-    });
+    };
+
+    if (draft.emailDeliveryId !== null) {
+      await tx
+        .update(emailDeliveries)
+        .set(markedDone)
+        .where(eq(emailDeliveries.emailDeliveryId, draft.emailDeliveryId));
+    } else {
+      await tx.insert(emailDeliveries).values({
+        outreachDraftId: draft.outreachDraftId,
+        ...markedDone,
+      });
+    }
 
     await tx
       .update(leads)

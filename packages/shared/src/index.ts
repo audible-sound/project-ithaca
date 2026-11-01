@@ -8,6 +8,11 @@ export {
   workflowStepTypes,
 } from "./workflow.js";
 export type { SignInRequest, SignInResponse } from "./auth.js";
+export type {
+  DashboardLead,
+  DashboardResponse,
+  DashboardUsageRow,
+} from "./dashboard.js";
 export {
   leadFollowUpIndicators,
   leadFollowUpStatuses,

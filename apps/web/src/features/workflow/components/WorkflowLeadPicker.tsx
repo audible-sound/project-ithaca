@@ -30,6 +30,7 @@ type WorkflowLeadPickerProps = {
   leads: LeadSummary[];
   leadIds: string[];
   status: RequestStatus;
+  useSelectedLeadsOnly: boolean;
   onToggleLead: (leadId: string) => void;
 };
 
@@ -118,6 +119,7 @@ export function WorkflowLeadPicker({
   leads,
   leadIds,
   status,
+  useSelectedLeadsOnly,
   onToggleLead,
 }: WorkflowLeadPickerProps): ReactElement {
   const [nameQuery, setNameQuery] = useState("");
@@ -264,7 +266,11 @@ export function WorkflowLeadPicker({
         </Typography>
       ) : null}
       <FormHelperText sx={{ mx: 0 }}>
-        Leaving every box unchecked identifies companies from the profile.
+        {useSelectedLeadsOnly
+          ? "Identify is skipped. Only the selected leads continue."
+          : leadIds.length > 0
+            ? "Identify still runs. Selected leads stay, and their websites are left out of the search so the results are new companies."
+            : "Leaving every box unchecked identifies companies from the profile."}
       </FormHelperText>
     </Stack>
   );

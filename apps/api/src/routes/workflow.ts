@@ -229,6 +229,29 @@ function readLeadIds(
   return leadIds;
 }
 
+function readUseSelectedLeadsOnly(
+  body: Record<string, unknown>,
+): boolean | { message: string } {
+  if (
+    !Object.hasOwn(body, "useSelectedLeadsOnly") ||
+    body.useSelectedLeadsOnly === undefined
+  ) {
+    return false;
+  }
+
+  if (typeof body.useSelectedLeadsOnly !== "boolean") {
+    return { message: "Use selected leads only must be true or false." };
+  }
+
+  return body.useSelectedLeadsOnly;
+}
+
+function isUseSelectedLeadsOnlyError(
+  value: boolean | { message: string },
+): value is { message: string } {
+  return typeof value !== "boolean";
+}
+
 // Starts a workflow run.
 workflowRouter.post("/runs", async (req, res) => {
   const userId = req.auth?.sub;
@@ -256,6 +279,17 @@ workflowRouter.post("/runs", async (req, res) => {
 
   if (leadIds.some((leadId) => !isUuid(leadId))) {
     res.status(404).json({ message: "Lead not found." });
+    return;
+  }
+
+  const useSelectedLeadsOnly = readUseSelectedLeadsOnly(body);
+  if (isUseSelectedLeadsOnlyError(useSelectedLeadsOnly)) {
+    res.status(400).json(useSelectedLeadsOnly);
+    return;
+  }
+
+  if (useSelectedLeadsOnly && leadIds.length === 0) {
+    res.status(400).json({ message: "Select at least one lead." });
     return;
   }
 
@@ -310,6 +344,7 @@ workflowRouter.post("/runs", async (req, res) => {
       userId,
       icp,
       leadIds,
+      useSelectedLeadsOnly,
     }).catch((err: unknown) => {
       console.error(err);
     });

@@ -10,7 +10,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState, type ReactElement } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useLeadStore } from "../../stores/leadStore";
 import { capitalize } from "../../utils/string";
 import { LeadTable } from "./components/LeadTable";
@@ -22,6 +22,21 @@ const noneIcpValue = "none";
 const unscoredPriorityValue = "unscored";
 const dueFollowUpValue = "due";
 const notDueFollowUpValue = "not_due";
+
+function initialFilterValue(
+  params: URLSearchParams,
+  key: string,
+  allowed?: ReadonlySet<string>,
+): string {
+  const value = params.get(key);
+  if (value === null || value.length === 0) {
+    return allValue;
+  }
+  if (allowed !== undefined && !allowed.has(value)) {
+    return allValue;
+  }
+  return value;
+}
 
 type FilterOption = {
   value: string;
@@ -134,13 +149,24 @@ export function LeadsPage(): ReactElement {
   const listMessage = useLeadStore((state) => state.listMessage);
   const deleteMessage = useLeadStore((state) => state.deleteMessage);
   const loadLeads = useLeadStore((state) => state.loadLeads);
+  const [searchParams] = useSearchParams();
   const [nameQuery, setNameQuery] = useState("");
-  const [ownerFilter, setOwnerFilter] = useState(allValue);
+  const [ownerFilter, setOwnerFilter] = useState(() =>
+    initialFilterValue(searchParams, "owner"),
+  );
   const [icpFilter, setIcpFilter] = useState(allValue);
-  const [stageFilter, setStageFilter] = useState(allValue);
+  const [stageFilter, setStageFilter] = useState(() =>
+    initialFilterValue(searchParams, "stage", new Set(leadListStages)),
+  );
   const [priorityFilter, setPriorityFilter] = useState(allValue);
   const [sourceFilter, setSourceFilter] = useState(allValue);
-  const [followUpFilter, setFollowUpFilter] = useState(allValue);
+  const [followUpFilter, setFollowUpFilter] = useState(() =>
+    initialFilterValue(
+      searchParams,
+      "followUp",
+      new Set([dueFollowUpValue, notDueFollowUpValue]),
+    ),
+  );
 
   useEffect(() => {
     void loadLeads();

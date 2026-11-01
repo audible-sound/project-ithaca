@@ -47,6 +47,8 @@ export type WorkflowLeadStatus = (typeof workflowLeadStatuses)[number];
 export interface LeadWorkflowInput {
   icp: IdealCustomerProfileInput;
   leadIds?: string[];
+  /** When true, the run keeps the selected leads and skips identify. */
+  useSelectedLeadsOnly?: boolean;
 }
 
 export interface IdentifiedLeadCandidate {
@@ -264,6 +266,8 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
 export interface StartWorkflowRunRequest {
   icpId: string;
   leadIds?: string[];
+  /** When true, the run keeps the selected leads and skips identify. */
+  useSelectedLeadsOnly?: boolean;
 }
 
 export interface StartWorkflowRunResponse {

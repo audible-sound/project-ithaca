@@ -38,6 +38,7 @@ import type {
 import { workflowStepTypes } from "@ithaca/shared";
 import type {
   AgentStageResult,
+  IdentifiedLeadCandidate,
   IdealCustomerProfileInput,
   LeadWorkflowInput,
   LeadWorkflowResult,
@@ -169,6 +170,49 @@ function elapsedMs(startedAt: Date, completedAt: Date): number {
   return Math.round(completedAt.getTime() - startedAt.getTime());
 }
 
+function websiteKey(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function candidateWebsiteKeys(
+  candidate: IdentifiedLeadCandidate,
+): string[] {
+  const keys: string[] = [];
+  for (const value of [candidate.website, candidate.sourceUrl]) {
+    const key = websiteKey(value);
+    if (key.length === 0 || keys.includes(key)) {
+      continue;
+    }
+    keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * True when the candidate is a company already attached to this run.
+ * Match is the company name, or the website / source URL against the attached website.
+ */
+function candidateMatchesAttached(
+  candidate: IdentifiedLeadCandidate,
+  attached: readonly WorkflowLeadContext[],
+): boolean {
+  const name = candidate.companyName.trim().toLowerCase();
+  const keys = candidateWebsiteKeys(candidate);
+
+  for (const lead of attached) {
+    if (lead.companyName.trim().toLowerCase() === name) {
+      return true;
+    }
+
+    const attachedWebsite = websiteKey(lead.website);
+    if (attachedWebsite.length > 0 && keys.includes(attachedWebsite)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Runs identify, qualify, summarize, and draft in order.
  */
@@ -182,6 +226,7 @@ export async function runLeadWorkflow(
     defaultAgents,
     defaultPersistence,
     defaultStageRunners,
+    input.useSelectedLeadsOnly === true,
   );
 }
 
@@ -193,6 +238,7 @@ export async function runPersisted(
   agents: WorkflowAgents,
   persistence: WorkflowPersistence,
   stageRunners: WorkflowStageRunners = defaultStageRunners,
+  useSelectedLeadsOnly = false,
 ): Promise<LeadWorkflowResult> {
   // Runs one saved workflow and records progress. 
   await persistence.updateRun(workflowRunId, {
@@ -257,14 +303,28 @@ export async function runPersisted(
     // Only the agent call is timed. A throw or a failed result stops the run.
     const agentStartedAt = new Date();
     let result: AgentStageResult;
+    let identifyAttached: WorkflowLeadContext[] = [];
     try {
-      if (stepType === "identify" && leads.length > 0) {
+      if (stepType === "identify" && useSelectedLeadsOnly && leads.length > 0) {
         result = {
           stage: "identify",
           status: "completed",
           message:
             "Selected leads were already attached. Lead identification did not search for companies.",
         };
+      } else if (stepType === "identify" && leads.length > 0) {
+        identifyAttached = await persistence.listLeadContexts(
+          leads.map((lead) => lead.leadId),
+        );
+        const excludeWebsites = identifyAttached.flatMap((lead) =>
+          lead.website === undefined || lead.website.trim().length === 0
+            ? []
+            : [lead.website],
+        );
+        result = await identifyLeads(icp, {
+          excludeWebsites,
+          excludeCompanyNames: identifyAttached.map((lead) => lead.companyName),
+        });
       } else if (stepType === "qualify") {
         const contexts = await persistence.listLeadContexts(
           leads.map((lead) => lead.leadId),
@@ -359,9 +419,12 @@ export async function runPersisted(
       const seen = new Set(leads.map((lead) => lead.leadId));
       const drafts: WorkflowRunLeadDraft[] = [];
       let leadsForFailure = leads;
+      const candidates = result.candidates.filter(
+        (candidate) => !candidateMatchesAttached(candidate, identifyAttached),
+      );
 
       try {
-        for (const candidate of result.candidates) {
+        for (const candidate of candidates) {
           const stored = await persistence.insertIdentifiedLead({
             userId,
             ...candidate,

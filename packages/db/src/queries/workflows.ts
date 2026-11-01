@@ -5,7 +5,7 @@ import type {
   WorkflowStepStatus,
   WorkflowStepType,
 } from "@ithaca/shared";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { requireDb } from "../client.js";
 import { companies, leads } from "../schema/leads.js";
 import type {
@@ -297,6 +297,38 @@ export async function insertWorkflowRunLeads(
   if (rows.length !== drafts.length) {
     throw new Error("Workflow run leads were not created.");
   }
+
+  return rows;
+}
+
+export type TokenUsageByRunRow = {
+  workflowRunId: string;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCost: string;
+};
+
+/**
+ * Sums prompt tokens, completion tokens, and estimated cost per workflow run.
+ * @param workflowRunIds - Runs to include. Empty returns an empty list.
+ */
+export async function listTokenUsageByWorkflowRunIds(
+  workflowRunIds: string[],
+): Promise<TokenUsageByRunRow[]> {
+  if (workflowRunIds.length === 0) {
+    return [];
+  }
+
+  const rows = await requireDb()
+    .select({
+      workflowRunId: tokenUsages.workflowRunId,
+      promptTokens: sql<number>`coalesce(sum(${tokenUsages.promptTokens}), 0)::int`,
+      completionTokens: sql<number>`coalesce(sum(${tokenUsages.completionTokens}), 0)::int`,
+      estimatedCost: sql<string>`coalesce(sum(${tokenUsages.estimatedCost}), 0)::text`,
+    })
+    .from(tokenUsages)
+    .where(inArray(tokenUsages.workflowRunId, workflowRunIds))
+    .groupBy(tokenUsages.workflowRunId);
 
   return rows;
 }

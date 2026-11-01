@@ -215,6 +215,11 @@ export interface LeadOutreachDetail {
   updatedAt: string | null;
   /** Run that produced this draft. */
   workflowRunId: string;
+  /**
+   * Latest delivery status for this draft.
+   * Null until a send is queued. `failed` keeps the lead on Draft.
+   */
+  deliveryStatus: string | null;
 }
 
 /**

@@ -37,7 +37,11 @@ export type LeadListDetailRow = Lead & {
   priorityLabel: string | null;
   qualificationOverridden: boolean | null;
   latestStage: string | null;
+  latestWorkflowRunId: string | null;
+  latestRunLeadStatus: string | null;
+  latestRunLeadError: string | null;
   latestOutreachStatus: string | null;
+  deliveryStatus: string | null;
   followUpDueAt: Date | null;
   followUpStatus: string | null;
   repliedAt: Date | null;
@@ -700,7 +704,10 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
   const stageRows = await db
     .select({
       leadId: workflowRunLeads.leadId,
+      workflowRunId: workflowRunLeads.workflowRunId,
       currentStage: workflowRunLeads.currentStage,
+      status: workflowRunLeads.status,
+      errorMessage: workflowRunLeads.errorMessage,
     })
     .from(workflowRunLeads)
     .innerJoin(
@@ -713,10 +720,23 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       desc(workflowRuns.workflowRunId),
     );
 
-  const latestStageByLeadId = new Map<string, string>();
+  const latestRunByLeadId = new Map<
+    string,
+    {
+      workflowRunId: string;
+      currentStage: string;
+      status: string;
+      errorMessage: string | null;
+    }
+  >();
   for (const row of stageRows) {
-    if (!latestStageByLeadId.has(row.leadId)) {
-      latestStageByLeadId.set(row.leadId, row.currentStage);
+    if (!latestRunByLeadId.has(row.leadId)) {
+      latestRunByLeadId.set(row.leadId, {
+        workflowRunId: row.workflowRunId,
+        currentStage: row.currentStage,
+        status: row.status,
+        errorMessage: row.errorMessage,
+      });
     }
   }
 
@@ -726,6 +746,7 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       status: outreachDrafts.status,
       createdAt: outreachDrafts.createdAt,
       outreachDraftId: outreachDrafts.outreachDraftId,
+      deliveryStatus: emailDeliveries.deliveryStatus,
       sentAt: emailDeliveries.sentAt,
       followUpDueAt: emailDeliveries.followUpDueAt,
       followUpStatus: emailDeliveries.followUpStatus,
@@ -743,7 +764,13 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
       desc(outreachDrafts.outreachDraftId),
     );
 
-  const latestOutreachStatusByLeadId = new Map<string, string>();
+  const latestOutreachByLeadId = new Map<
+    string,
+    {
+      status: string;
+      deliveryStatus: string | null;
+    }
+  >();
   const followUpByLeadId = new Map<
     string,
     {
@@ -754,8 +781,11 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
     }
   >();
   for (const row of outreachRows) {
-    if (!latestOutreachStatusByLeadId.has(row.leadId)) {
-      latestOutreachStatusByLeadId.set(row.leadId, row.status);
+    if (!latestOutreachByLeadId.has(row.leadId)) {
+      latestOutreachByLeadId.set(row.leadId, {
+        status: row.status,
+        deliveryStatus: row.deliveryStatus,
+      });
     }
 
     if (followUpByLeadId.has(row.leadId)) {
@@ -778,10 +808,16 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
 
   return rows.map((row) => {
     const followUp = followUpByLeadId.get(row.leadId);
+    const latestRun = latestRunByLeadId.get(row.leadId);
+    const latestOutreach = latestOutreachByLeadId.get(row.leadId);
     return {
       ...row,
-      latestStage: latestStageByLeadId.get(row.leadId) ?? null,
-      latestOutreachStatus: latestOutreachStatusByLeadId.get(row.leadId) ?? null,
+      latestStage: latestRun?.currentStage ?? null,
+      latestWorkflowRunId: latestRun?.workflowRunId ?? null,
+      latestRunLeadStatus: latestRun?.status ?? null,
+      latestRunLeadError: latestRun?.errorMessage ?? null,
+      latestOutreachStatus: latestOutreach?.status ?? null,
+      deliveryStatus: latestOutreach?.deliveryStatus ?? null,
       followUpDueAt: followUp?.followUpDueAt ?? null,
       followUpStatus: followUp?.followUpStatus ?? null,
       repliedAt: followUp?.repliedAt ?? null,

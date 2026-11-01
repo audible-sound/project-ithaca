@@ -419,6 +419,11 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                           {decisionText}
                         </Typography>
                       ) : null}
+                      {lead.outreach.deliveryStatus === "failed" ? (
+                        <Typography variant="body2" color="error.main">
+                          Could not send. This draft was not delivered.
+                        </Typography>
+                      ) : null}
                       {outreachMessage !== null ? (
                         <Typography variant="caption" color="error">
                           {outreachMessage}

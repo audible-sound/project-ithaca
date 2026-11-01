@@ -7,6 +7,8 @@ export interface CompanySearchQuery {
   companySizeMin?: number;
   companySizeMax?: number;
   limit?: number;
+  /** Hostnames left out of the Exa search. Empty or omitted leaves the request unchanged. */
+  excludeDomains?: string[];
 }
 
 export interface CompanySearchResult {
@@ -227,10 +229,29 @@ function readEstimatedCost(body: unknown): number | undefined {
   return total;
 }
 
+function clauseDomains(values: string[] | undefined): string[] {
+  if (values === undefined) {
+    return [];
+  }
+
+  const domains: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const next = value.trim().toLowerCase();
+    if (next.length === 0 || seen.has(next)) {
+      continue;
+    }
+    seen.add(next);
+    domains.push(next);
+  }
+  return domains;
+}
+
 export async function searchCompanies(
   query: CompanySearchQuery,
 ): Promise<CompanySearchResponse> {
   const apiKey = readExaApiKey();
+  const excludeDomains = clauseDomains(query.excludeDomains);
   const response = await fetch("https://api.exa.ai/search", {
     method: "POST",
     headers: {
@@ -243,6 +264,7 @@ export async function searchCompanies(
       category: "company",
       numResults: resolveNumResults(query.limit),
       contents: { highlights: true, text: true },
+      ...(excludeDomains.length > 0 ? { excludeDomains } : {}),
     }),
   });
 

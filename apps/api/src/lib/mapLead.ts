@@ -23,6 +23,7 @@ import {
   workflowStages,
 } from "@ithaca/shared";
 import type {
+  DashboardLead,
   LeadDetail,
   LeadFollowUpIndicator,
   LeadFollowUpStatus,
@@ -229,14 +230,23 @@ function followUpStatusFrom(
 /**
  * True when the email has moved past a draft: it was sent, a follow-up
  * was scheduled, a delivery status was recorded, or they replied.
+ * Queued and failed deliveries stay on Draft and do not count.
  */
 function hasOutreachActivity(row: LatestOutreachRow | null): boolean {
+  if (row === null) {
+    return false;
+  }
+
+  const deliveryCounts =
+    row.deliveryStatus !== null &&
+    row.deliveryStatus !== "queued" &&
+    row.deliveryStatus !== "failed";
+
   return (
-    row !== null &&
-    (row.deliveryStatus !== null ||
-      row.sentAt !== null ||
-      row.followUpDueAt !== null ||
-      row.repliedAt !== null)
+    deliveryCounts ||
+    row.sentAt !== null ||
+    row.followUpDueAt !== null ||
+    row.repliedAt !== null
   );
 }
 
@@ -507,6 +517,28 @@ export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
   };
 }
 
+/** Desk facts for the home dashboard: list stage plus latest run and delivery. */
+export function mapDashboardLead(row: LeadListDetailRow): DashboardLead {
+  const listItem = mapLeadListItem(row);
+
+  return {
+    leadId: listItem.leadId,
+    companyName: listItem.companyName,
+    ownerId: listItem.ownerId,
+    ownerName: listItem.ownerName,
+    score: listItem.score,
+    stage: listItem.stage,
+    followUpDue: listItem.followUpDue,
+    followUpIndicator: listItem.followUpIndicator,
+    outreachStatus: row.latestOutreachStatus,
+    deliveryStatus: row.deliveryStatus,
+    workflowRunId: row.latestWorkflowRunId,
+    runLeadStage: row.latestStage,
+    runLeadStatus: row.latestRunLeadStatus,
+    runLeadError: row.latestRunLeadError,
+  };
+}
+
 /**
  * Full lead for the detail page. Each section stays empty until that
  * stage has produced something: a contact, a score, a write-up, a
@@ -636,6 +668,7 @@ export function mapLeadDetail(input: {
           rejectedAt: toIso(outreachRow.rejectedAt),
           updatedAt: toIso(outreachRow.updatedAt),
           workflowRunId: outreachRow.workflowRunId,
+          deliveryStatus: outreachRow.deliveryStatus,
         }
       : null,
     followUp:
