@@ -1,10 +1,7 @@
 import type { IdealCustomerProfile } from "@ithaca/shared";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import Checkbox from "@mui/material/Checkbox";
 import FormControl from "@mui/material/FormControl";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import FormHelperText from "@mui/material/FormHelperText";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -14,7 +11,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useState, type ReactElement, type SubmitEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useIcpStore } from "../../stores/icpStore";
-import { workflowLabel } from "./workflowLabels";
+import { WorkflowLeadPicker } from "./components/WorkflowLeadPicker";
 import { useWorkflowStore } from "../../stores/workflowStore";
 
 function industriesText(profile: IdealCustomerProfile): string {
@@ -96,7 +93,7 @@ export function WorkflowFormPage(): ReactElement {
     activeProfiles.length === 0;
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 720 }}>
+    <Stack spacing={3}>
       <Typography variant="h1">Start workflow</Typography>
       {listStatus === "error" && listMessage ? (
         <Alert severity="error">{listMessage}</Alert>
@@ -147,32 +144,12 @@ export function WorkflowFormPage(): ReactElement {
             ) : null}
           </Stack>
 
-          <Stack spacing={1}>
-            <Typography variant="h6">Leads to include</Typography>
-            {leadStatus === "ready" && leads.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                No leads yet.
-              </Typography>
-            ) : null}
-            {leads.map((lead) => (
-              <FormControlLabel
-                key={lead.leadId}
-                control={
-                  <Checkbox
-                    checked={leadIds.includes(lead.leadId)}
-                    onChange={() => {
-                      toggleLead(lead.leadId);
-                    }}
-                    size="small"
-                  />
-                }
-                label={`${lead.companyName} · ${workflowLabel(lead.sourceType)}`}
-              />
-            ))}
-            <FormHelperText sx={{ mx: 0 }}>
-              Leaving every box unchecked identifies companies from the profile.
-            </FormHelperText>
-          </Stack>
+          <WorkflowLeadPicker
+            leads={leads}
+            leadIds={leadIds}
+            status={leadStatus}
+            onToggleLead={toggleLead}
+          />
 
           {startMessage ? (
             <Alert severity={startStatus === "ready" ? "success" : "error"}>

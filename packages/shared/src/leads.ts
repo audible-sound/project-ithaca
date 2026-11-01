@@ -2,12 +2,23 @@
  * A lead is one company moving through identify, qualify, summarize, draft, and follow-up.
  */
 
+/** Ideal customer profile linked to a lead through a workflow run. */
+export interface LeadListIcp {
+  icpId: string;
+  name: string;
+}
+
 /** Short lead used when choosing companies for a workflow run (`GET /leads`). */
 export interface LeadSummary {
   leadId: string;
   companyName: string;
   /** `manual` was entered by a user. `identified` was found by the identify agent. */
   sourceType: "manual" | "identified";
+  /**
+   * Profiles from workflow runs that included this lead.
+   * Empty when the lead has never been in a run. Each profile appears once.
+   */
+  icps: LeadListIcp[];
 }
 
 /** Body of `GET /leads`. */
@@ -34,12 +45,6 @@ export type LeadListStage = (typeof leadListStages)[number];
 /** Qualification priority. Null until the qualify stage has scored the lead. */
 export const leadPriorities = ["high", "medium", "low"] as const;
 export type LeadPriority = (typeof leadPriorities)[number];
-
-/** Ideal customer profile linked to a lead through a workflow run. */
-export interface LeadListIcp {
-  icpId: string;
-  name: string;
-}
 
 /** One row on the Leads page (`GET /leads/all`). */
 export interface LeadListItem {

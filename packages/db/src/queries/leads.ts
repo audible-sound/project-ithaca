@@ -19,13 +19,14 @@ import { leadQualifications, leadSummaries } from "../schema/reviews.js";
 import { users } from "../schema/users.js";
 import { workflowRunLeads, workflowRuns } from "../schema/workflows.js";
 
-export type LeadListRow = Lead & {
-  companyName: string;
-};
-
 export type LeadListDetailIcp = {
   icpId: string;
   name: string;
+};
+
+export type LeadListRow = Lead & {
+  companyName: string;
+  icps: LeadListDetailIcp[];
 };
 
 export type LeadListDetailRow = Lead & {
@@ -585,12 +586,64 @@ export async function listLeadContextsByIds(
 }
 
 /**
+ * Profiles from workflow runs that included each lead, each profile once per lead.
+ * @param leadIds - Lead ids to look up.
+ * @returns Map of lead id to related profiles, sorted by name then id.
+ */
+async function listIcpsByLeadIds(
+  leadIds: string[],
+): Promise<Map<string, LeadListDetailIcp[]>> {
+  const icpsByLeadId = new Map<string, LeadListDetailIcp[]>();
+  if (leadIds.length === 0) {
+    return icpsByLeadId;
+  }
+
+  const icpRows = await requireDb()
+    .select({
+      leadId: workflowRunLeads.leadId,
+      icpId: workflowRuns.icpId,
+      name: idealCustomerProfiles.name,
+    })
+    .from(workflowRunLeads)
+    .innerJoin(
+      workflowRuns,
+      eq(workflowRunLeads.workflowRunId, workflowRuns.workflowRunId),
+    )
+    .innerJoin(
+      idealCustomerProfiles,
+      eq(workflowRuns.icpId, idealCustomerProfiles.icpId),
+    )
+    .where(inArray(workflowRunLeads.leadId, leadIds));
+
+  for (const row of icpRows) {
+    const list = icpsByLeadId.get(row.leadId) ?? [];
+    if (!list.some((icp) => icp.icpId === row.icpId)) {
+      list.push({ icpId: row.icpId, name: row.name });
+      icpsByLeadId.set(row.leadId, list);
+    }
+  }
+
+  for (const list of icpsByLeadId.values()) {
+    list.sort((a, b) => {
+      const byName = a.name.localeCompare(b.name);
+      if (byName !== 0) {
+        return byName;
+      }
+
+      return a.icpId.localeCompare(b.icpId);
+    });
+  }
+
+  return icpsByLeadId;
+}
+
+/**
  * Lists a user's leads with the company name, newest first.
  * @param userId - The ID of the user who owns the leads.
  * @returns The leads if found, otherwise an empty array.
  */
 export async function listLeadsByUser(userId: string): Promise<LeadListRow[]> {
-  return requireDb()
+  const rows = await requireDb()
     .select({
       leadId: leads.leadId,
       companyId: leads.companyId,
@@ -607,6 +660,17 @@ export async function listLeadsByUser(userId: string): Promise<LeadListRow[]> {
     .innerJoin(companies, eq(leads.companyId, companies.companyId))
     .where(and(eq(leads.createdByUserId, userId), isNull(leads.deletedAt)))
     .orderBy(desc(leads.createdAt), desc(leads.leadId));
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const icpsByLeadId = await listIcpsByLeadIds(rows.map((row) => row.leadId));
+
+  return rows.map((row) => ({
+    ...row,
+    icps: icpsByLeadId.get(row.leadId) ?? [],
+  }));
 }
 
 /**
@@ -703,42 +767,7 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
     }
   }
 
-  const icpRows = await db
-    .select({
-      leadId: workflowRunLeads.leadId,
-      icpId: workflowRuns.icpId,
-      name: idealCustomerProfiles.name,
-    })
-    .from(workflowRunLeads)
-    .innerJoin(
-      workflowRuns,
-      eq(workflowRunLeads.workflowRunId, workflowRuns.workflowRunId),
-    )
-    .innerJoin(
-      idealCustomerProfiles,
-      eq(workflowRuns.icpId, idealCustomerProfiles.icpId),
-    )
-    .where(inArray(workflowRunLeads.leadId, leadIds));
-
-  const icpsByLeadId = new Map<string, LeadListDetailIcp[]>();
-  for (const row of icpRows) {
-    const list = icpsByLeadId.get(row.leadId) ?? [];
-    if (!list.some((icp) => icp.icpId === row.icpId)) {
-      list.push({ icpId: row.icpId, name: row.name });
-      icpsByLeadId.set(row.leadId, list);
-    }
-  }
-
-  for (const list of icpsByLeadId.values()) {
-    list.sort((a, b) => {
-      const byName = a.name.localeCompare(b.name);
-      if (byName !== 0) {
-        return byName;
-      }
-
-      return a.icpId.localeCompare(b.icpId);
-    });
-  }
+  const icpsByLeadId = await listIcpsByLeadIds(leadIds);
 
   return rows.map((row) => ({
     ...row,

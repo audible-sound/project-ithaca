@@ -383,6 +383,7 @@ export function mapLead(row: LeadListRow): LeadSummary {
     leadId: row.leadId,
     companyName: row.companyName,
     sourceType: leadSourceType(row.sourceType),
+    icps: row.icps,
   };
 }
 
