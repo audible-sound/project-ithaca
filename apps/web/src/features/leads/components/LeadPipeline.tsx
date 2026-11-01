@@ -1,8 +1,10 @@
 import { leadPipelineStages } from "@ithaca/shared";
 import type {
+  EditLeadOutreachRequest,
   EditLeadSummaryRequest,
   LeadDetail,
   LeadPipelineStageStatus,
+  ReviseLeadOutreachRequest,
 } from "@ithaca/shared";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -69,16 +71,27 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const summaryMessage = useLeadStore((state) => state.summaryMessage);
   const editSummary = useLeadStore((state) => state.editSummary);
   const clearSummaryEdit = useLeadStore((state) => state.clearSummaryEdit);
+  const outreachMessage = useLeadStore((state) => state.outreachMessage);
+  const editOutreach = useLeadStore((state) => state.editOutreach);
+  const reviseOutreach = useLeadStore((state) => state.reviseOutreach);
+  const clearOutreachEdit = useLeadStore((state) => state.clearOutreachEdit);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [revisingDraft, setRevisingDraft] = useState(false);
   const canOverride =
     lead.ownerId !== null && lead.ownerId === userId && lead.qualification !== null;
   const canEditSummary =
     lead.ownerId !== null && lead.ownerId === userId && lead.summary !== null;
   const canViewDraft = lead.outreach !== null;
+  const canEditDraft =
+    lead.ownerId !== null &&
+    lead.ownerId === userId &&
+    lead.outreach !== null &&
+    (lead.outreach.status === "draft" || lead.outreach.status === "edited");
   const order = new Map(leadPipelineStages.map((stage, index) => [stage, index]));
   const stages = [...lead.pipeline].sort(
     (a, b) => (order.get(a.stage) ?? 0) - (order.get(b.stage) ?? 0),
@@ -102,6 +115,24 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
     if (saved) {
       setSummaryOpen(false);
     }
+  }
+
+  async function onSaveOutreach(values: EditLeadOutreachRequest): Promise<void> {
+    setSavingDraft(true);
+    const saved = await editOutreach(lead.leadId, values);
+    setSavingDraft(false);
+    if (saved) {
+      setDraftOpen(false);
+    }
+  }
+
+  async function onReviseOutreach(
+    values: ReviseLeadOutreachRequest,
+  ): Promise<{ subject: string; body: string } | null> {
+    setRevisingDraft(true);
+    const revised = await reviseOutreach(lead.leadId, values);
+    setRevisingDraft(false);
+    return revised;
   }
 
   return (
@@ -261,6 +292,11 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                 {entry.stage === "draft" ? (
                   lead.outreach ? (
                     <Stack spacing={0.5}>
+                      {lead.outreach.isUserEdited ? (
+                        <Typography variant="body2" color="text.secondary">
+                          Edited
+                        </Typography>
+                      ) : null}
                       <Typography variant="body2" color="text.secondary">
                         Subject: {lead.outreach.subject ?? "—"}
                       </Typography>
@@ -269,10 +305,11 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                           size="small"
                           disabled={!canViewDraft}
                           onClick={() => {
+                            clearOutreachEdit();
                             setDraftOpen(true);
                           }}
                         >
-                          View message
+                          {canEditDraft ? "Edit message" : "View message"}
                         </Button>
                       </Box>
                     </Stack>
@@ -283,7 +320,7 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                       </Typography>
                       <Box>
                         <Button size="small" disabled>
-                          View message
+                          Edit message
                         </Button>
                       </Box>
                     </Stack>
@@ -387,9 +424,23 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
         open={draftOpen}
         subject={lead.outreach?.subject ?? null}
         body={lead.outreach?.body ?? null}
-        onClose={() => {
-          setDraftOpen(false);
+        generatedSubject={lead.outreach?.generatedSubject ?? null}
+        generatedBody={lead.outreach?.generatedBody ?? null}
+        editable={canEditDraft}
+        saving={savingDraft}
+        revising={revisingDraft}
+        message={outreachMessage}
+        onCancel={() => {
+          if (!savingDraft && !revisingDraft) {
+            clearOutreachEdit();
+            setDraftOpen(false);
+          }
         }}
+        onClearMessage={clearOutreachEdit}
+        onSave={(values) => {
+          void onSaveOutreach(values);
+        }}
+        onRevise={onReviseOutreach}
       />
     </Paper>
   );

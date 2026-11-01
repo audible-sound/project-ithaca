@@ -10,15 +10,19 @@ import {
   updateLeadFacts,
   updateLeadQualificationOverride,
   updateLeadSummaryOverride,
+  updateOutreachDraft,
 } from "@ithaca/db";
+import { reviseOutreachDraft } from "@ithaca/orchestrator";
 import type {
   CreateLeadResponse,
   DeleteLeadResponse,
+  EditLeadOutreachResponse,
   EditLeadSummaryResponse,
   LeadDetail,
   ListLeadListResponse,
   ListLeadsResponse,
   OverrideLeadQualificationResponse,
+  ReviseLeadOutreachResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
 import { qualificationLabelsForScore } from "@ithaca/shared";
@@ -29,9 +33,14 @@ import {
   leadDeletedMessage,
   leadStoredMessage,
   leadUpdatedMessage,
+  outreachEditedMessage,
+  outreachMissingMessage,
+  outreachNotEditableMessage,
   qualificationMissingMessage,
   qualificationOverriddenMessage,
   readManualLead,
+  readOutreachEdit,
+  readOutreachRevise,
   readQualificationOverride,
   readSummaryEdit,
   summaryEditedMessage,
@@ -262,6 +271,106 @@ leadsRouter.put("/:leadId/summary", async (req, res) => {
 
     const response: EditLeadSummaryResponse = {
       message: summaryEditedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Revise the subject and body on an outreach draft owned by the signed-in user.
+// Returns the revision. Does not save the draft.
+leadsRouter.post("/:leadId/outreach/revise", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  const revise = readOutreachRevise(asRecord(req.body));
+  if ("message" in revise) {
+    res.status(400).json(revise);
+    return;
+  }
+
+  try {
+    const result = await reviseOutreachDraft({
+      leadId,
+      userId,
+      subject: revise.subject,
+      body: revise.body,
+      instruction: revise.instruction,
+    });
+    if (result.status === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result.status === "not_drafted") {
+      res.status(409).json({ message: outreachMissingMessage });
+      return;
+    }
+    if (result.status === "not_editable") {
+      res.status(409).json({ message: outreachNotEditableMessage });
+      return;
+    }
+
+    const response: ReviseLeadOutreachResponse = {
+      subject: result.subject,
+      body: result.body,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Replace the subject and body on an outreach draft owned by the signed-in user.
+leadsRouter.put("/:leadId/outreach", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  const edit = readOutreachEdit(asRecord(req.body));
+  if ("message" in edit) {
+    res.status(400).json(edit);
+    return;
+  }
+
+  try {
+    const result = await updateOutreachDraft(leadId, userId, edit);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result === "not_drafted") {
+      res.status(409).json({ message: outreachMissingMessage });
+      return;
+    }
+    if (result === "not_editable") {
+      res.status(409).json({ message: outreachNotEditableMessage });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Outreach draft was not edited.");
+    }
+
+    const response: EditLeadOutreachResponse = {
+      message: outreachEditedMessage,
       lead,
     };
     res.status(200).json(response);

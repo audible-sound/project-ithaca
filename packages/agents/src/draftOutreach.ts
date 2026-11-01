@@ -80,7 +80,8 @@ function sourceLabel(
   return missingFact;
 }
 
-function companyFacts(lead: WorkflowLeadContext): string {
+/** Company lines for an outreach prompt. An absent field is `Missing.` */
+export function companyFacts(lead: WorkflowLeadContext): string {
   return [
     `Company: ${lead.companyName}`,
     `Website: ${present(lead.website)}`,
@@ -91,7 +92,8 @@ function companyFacts(lead: WorkflowLeadContext): string {
   ].join("\n");
 }
 
-function contactFacts(lead: WorkflowLeadContext): string {
+/** Contact lines for an outreach prompt. An absent field is `Missing.` */
+export function contactFacts(lead: WorkflowLeadContext): string {
   return [
     `Contact: ${contactName(lead.contact)}`,
     `Email: ${present(lead.contact?.email)}`,
@@ -100,7 +102,8 @@ function contactFacts(lead: WorkflowLeadContext): string {
   ].join("\n");
 }
 
-function sourceFacts(lead: WorkflowLeadContext): string {
+/** Source lines for an outreach prompt. An absent field is `Missing.` */
+export function sourceFacts(lead: WorkflowLeadContext): string {
   const titles: string[] = [];
   const urls: string[] = [];
   for (const source of lead.sources ?? []) {

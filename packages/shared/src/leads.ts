@@ -186,7 +186,13 @@ export interface LeadOutreachDetail {
   subject: string | null;
   /** Email body. Null until the draft stores one. */
   body: string | null;
+  /** Subject produced by the draft stage. Null until stored. */
+  generatedSubject: string | null;
+  /** Body produced by the draft stage. Null until stored. */
+  generatedBody: string | null;
   status: string;
+  /** True when a person edited the generated draft. */
+  isUserEdited: boolean;
   /** Run that produced this draft. */
   workflowRunId: string;
 }
@@ -305,4 +311,29 @@ export interface EditLeadSummaryRequest {
 export interface EditLeadSummaryResponse {
   message: string;
   lead: LeadDetail;
+}
+
+/** Body of `PUT /leads/:leadId/outreach`. */
+export interface EditLeadOutreachRequest {
+  subject: string;
+  body: string;
+}
+
+/** Body of a successful `PUT /leads/:leadId/outreach`. */
+export interface EditLeadOutreachResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of `POST /leads/:leadId/outreach/revise`. */
+export interface ReviseLeadOutreachRequest {
+  instruction: string;
+  subject: string;
+  body: string;
+}
+
+/** Body of a successful `POST /leads/:leadId/outreach/revise`. */
+export interface ReviseLeadOutreachResponse {
+  subject: string;
+  body: string;
 }

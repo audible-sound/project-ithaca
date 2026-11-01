@@ -38,6 +38,10 @@ export const outreachDrafts = pgTable(
       .references(() => workflowRuns.workflowRunId, { onDelete: "restrict" }),
     subject: text("subject"),
     body: text("body"),
+    /** Subject produced by the draft stage. Unchanged after a person edits. */
+    generatedSubject: text("generated_subject"),
+    /** Body produced by the draft stage. Unchanged after a person edits. */
+    generatedBody: text("generated_body"),
     status: text("status").notNull(),
     isUserEdited: boolean("is_user_edited").notNull(),
     approvedByUserId: uuid("approved_by_user_id").references(

@@ -20,6 +20,11 @@ export const summaryEditedMessage = "Summary edited.";
 export const summaryRequiredMessage =
   "Summary, about the company, why it fits, gap, and next step are required.";
 export const summaryMissingMessage = "Lead has no summary to edit.";
+export const outreachEditedMessage = "Outreach draft edited.";
+export const outreachRequiredMessage = "Subject and message are required.";
+export const outreachMissingMessage = "Lead has no outreach draft to edit.";
+export const outreachNotEditableMessage = "Outreach draft cannot be edited.";
+export const outreachInstructionRequiredMessage = "Instruction is required.";
 
 function emailMessage(value: string | null, message: string): string | null {
   if (value === null || emailAddress.test(value)) {
@@ -170,6 +175,77 @@ export function readSummaryEdit(
   }
 
   return { summaryText, snapshot, whyItFits, gap, nextStep };
+}
+
+export type OutreachEditInput = {
+  subject: string;
+  body: string;
+};
+
+function requiredOutreachText(
+  body: Record<string, unknown>,
+  field: keyof OutreachEditInput,
+): string | { message: string } {
+  const value = body[field];
+  if (typeof value !== "string") {
+    return { message: outreachRequiredMessage };
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return { message: outreachRequiredMessage };
+  }
+
+  return trimmed;
+}
+
+/**
+ * Reads an outreach draft edit.
+ * Subject and message must be non-empty text.
+ */
+export function readOutreachEdit(
+  body: Record<string, unknown>,
+): OutreachEditInput | { message: string } {
+  const subject = requiredOutreachText(body, "subject");
+  if (typeof subject !== "string") {
+    return subject;
+  }
+
+  const messageBody = requiredOutreachText(body, "body");
+  if (typeof messageBody !== "string") {
+    return messageBody;
+  }
+
+  return { subject, body: messageBody };
+}
+
+export type OutreachReviseInput = OutreachEditInput & {
+  instruction: string;
+};
+
+/**
+ * Reads an outreach draft revision request.
+ * Instruction, subject, and message must be non-empty text.
+ */
+export function readOutreachRevise(
+  body: Record<string, unknown>,
+): OutreachReviseInput | { message: string } {
+  const instructionValue = body.instruction;
+  if (typeof instructionValue !== "string") {
+    return { message: outreachInstructionRequiredMessage };
+  }
+
+  const instruction = instructionValue.trim();
+  if (instruction.length === 0) {
+    return { message: outreachInstructionRequiredMessage };
+  }
+
+  const edit = readOutreachEdit(body);
+  if ("message" in edit) {
+    return edit;
+  }
+
+  return { instruction, subject: edit.subject, body: edit.body };
 }
 
 /** Reads and checks a manual lead body. Returns the facts, or the first error. */

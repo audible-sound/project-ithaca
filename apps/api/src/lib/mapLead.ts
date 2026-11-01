@@ -528,7 +528,11 @@ export function mapLeadDetail(input: {
       ? {
           subject: outreachRow.subject,
           body: outreachRow.body,
+          generatedSubject:
+            outreachRow.generatedSubject ?? outreachRow.subject,
+          generatedBody: outreachRow.generatedBody ?? outreachRow.body,
           status: outreachRow.status,
+          isUserEdited: outreachRow.isUserEdited,
           workflowRunId: outreachRow.workflowRunId,
         }
       : null,

@@ -2,12 +2,16 @@ import type {
   CreateLeadRequest,
   CreateLeadResponse,
   DeleteLeadResponse,
+  EditLeadOutreachRequest,
+  EditLeadOutreachResponse,
   EditLeadSummaryRequest,
   EditLeadSummaryResponse,
   LeadDetail,
   LeadListItem,
   ListLeadListResponse,
   OverrideLeadQualificationResponse,
+  ReviseLeadOutreachRequest,
+  ReviseLeadOutreachResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
@@ -170,6 +174,7 @@ type LeadStore = {
   deleteMessage: string | null;
   overrideMessage: string | null;
   summaryMessage: string | null;
+  outreachMessage: string | null;
   loadLeads: () => Promise<void>;
   loadLead: (leadId: string) => Promise<void>;
   createLead: (values: LeadFormValues) => Promise<string | null>;
@@ -184,9 +189,18 @@ type LeadStore = {
     leadId: string,
     values: EditLeadSummaryRequest,
   ) => Promise<boolean>;
+  editOutreach: (
+    leadId: string,
+    values: EditLeadOutreachRequest,
+  ) => Promise<boolean>;
+  reviseOutreach: (
+    leadId: string,
+    values: ReviseLeadOutreachRequest,
+  ) => Promise<{ subject: string; body: string } | null>;
   clearForm: () => void;
   clearOverride: () => void;
   clearSummaryEdit: () => void;
+  clearOutreachEdit: () => void;
 };
 
 export const useLeadStore = create<LeadStore>()((set, get) => ({
@@ -201,6 +215,7 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
   deleteMessage: null,
   overrideMessage: null,
   summaryMessage: null,
+  outreachMessage: null,
   clearForm: () => {
     set({ formStatus: "idle", formMessage: null });
   },
@@ -209,6 +224,9 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
   },
   clearSummaryEdit: () => {
     set({ summaryMessage: null });
+  },
+  clearOutreachEdit: () => {
+    set({ outreachMessage: null });
   },
   loadLead: async (leadId) => {
     const token = authToken();
@@ -465,6 +483,91 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
           err instanceof Error ? err.message : "Failed to reach API",
       });
       return false;
+    }
+  },
+  editOutreach: async (leadId, values) => {
+    const token = authToken();
+    if (!token) {
+      set({ outreachMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ outreachMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/outreach`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(values),
+      });
+      const data = await readJson<Partial<EditLeadOutreachResponse>>(res);
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ outreachMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        outreachMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        outreachMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
+    }
+  },
+  reviseOutreach: async (leadId, values) => {
+    const token = authToken();
+    if (!token) {
+      set({ outreachMessage: "Authentication required." });
+      return null;
+    }
+
+    set({ outreachMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/outreach/revise`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(values),
+      });
+      const data = await readJson<ReviseLeadOutreachResponse>(res);
+      const subject =
+        "subject" in data && typeof data.subject === "string"
+          ? data.subject
+          : null;
+      const body =
+        "body" in data && typeof data.body === "string" ? data.body : null;
+      if (!res.ok || subject === null || body === null) {
+        set({
+          outreachMessage:
+            "message" in data && typeof data.message === "string"
+              ? data.message
+              : "Failed to reach API",
+        });
+        return null;
+      }
+
+      set({ outreachMessage: null });
+      return { subject, body };
+    } catch (err) {
+      set({
+        outreachMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return null;
     }
   },
   deleteLead: async (leadId) => {
