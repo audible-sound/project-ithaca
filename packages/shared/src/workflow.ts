@@ -32,6 +32,7 @@ export const workflowStepStatuses = [
   "running",
   "completed",
   "failed",
+  "skipped",
 ] as const;
 export type WorkflowStepStatus = (typeof workflowStepStatuses)[number];
 

@@ -89,7 +89,7 @@ export function WorkflowRunPage(): ReactElement {
       ) : null}
       {visibleRun ? (
         <>
-          <WorkflowStepTable steps={visibleRun.steps} />
+          <WorkflowStepTable steps={visibleRun.steps} leads={visibleRun.leads} />
           {visibleRun.status === "failed" && visibleRun.errorMessage ? (
             <Alert severity="error">{visibleRun.errorMessage}</Alert>
           ) : null}

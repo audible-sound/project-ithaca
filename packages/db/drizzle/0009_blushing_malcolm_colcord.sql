@@ -1,0 +1,2 @@
+ALTER TABLE "workflow_steps" DROP CONSTRAINT "workflow_steps_status";--> statement-breakpoint
+ALTER TABLE "workflow_steps" ADD CONSTRAINT "workflow_steps_status" CHECK ("workflow_steps"."status" IN ('pending', 'running', 'completed', 'failed', 'skipped'));

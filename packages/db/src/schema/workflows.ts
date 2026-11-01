@@ -93,7 +93,7 @@ export const workflowSteps = pgTable(
     ),
     check(
       "workflow_steps_status",
-      sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`,
+      sql`${table.status} IN ('pending', 'running', 'completed', 'failed', 'skipped')`,
     ),
   ],
 );

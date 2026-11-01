@@ -1,17 +1,24 @@
 import { workflowStepTypes } from "@ithaca/shared";
-import type { WorkflowStep } from "@ithaca/shared";
+import type { WorkflowRunLead, WorkflowStep } from "@ithaca/shared";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
-import { workflowLabel } from "../workflowLabels";
+import {
+  formatStepLeadProgress,
+  noLeadsReachedStepMessage,
+  stepLeadProgress,
+  workflowLabel,
+} from "../workflowLabels";
 import { WorkflowStatusText } from "./WorkflowStatusText";
 
 type WorkflowStepTableProps = {
   steps: WorkflowStep[];
+  leads: WorkflowRunLead[];
 };
 
 const headerCellSx = {
@@ -30,8 +37,27 @@ function orderedSteps(steps: WorkflowStep[]): WorkflowStep[] {
   );
 }
 
+function stepProgressText(
+  step: WorkflowStep,
+  leads: WorkflowRunLead[],
+): string {
+  if (step.status === "skipped") {
+    return noLeadsReachedStepMessage;
+  }
+
+  const progress = stepLeadProgress(step.stepType, leads);
+  const total =
+    progress.pending + progress.running + progress.finished + progress.failed;
+  if (total === 0) {
+    return "";
+  }
+
+  return formatStepLeadProgress(progress);
+}
+
 export function WorkflowStepTable({
   steps,
+  leads,
 }: WorkflowStepTableProps): ReactElement {
   return (
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
@@ -40,21 +66,41 @@ export function WorkflowStepTable({
           <TableRow sx={headerCellSx}>
             <TableCell>Step</TableCell>
             <TableCell>Status</TableCell>
+            <TableCell>Leads</TableCell>
             <TableCell>Attempts</TableCell>
             <TableCell>Error</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {orderedSteps(steps).map((step) => (
-            <TableRow key={step.workflowStepId}>
-              <TableCell>{workflowLabel(step.stepType)}</TableCell>
-              <TableCell>
-                <WorkflowStatusText status={step.status} />
-              </TableCell>
-              <TableCell>{step.attemptCount}</TableCell>
-              <TableCell>{step.errorMessage ?? ""}</TableCell>
-            </TableRow>
-          ))}
+          {orderedSteps(steps).map((step) => {
+            const progressText = stepProgressText(step, leads);
+            return (
+              <TableRow key={step.workflowStepId}>
+                <TableCell>{workflowLabel(step.stepType)}</TableCell>
+                <TableCell>
+                  <WorkflowStatusText status={step.status} />
+                </TableCell>
+                <TableCell>
+                  {progressText ? (
+                    <Typography
+                      variant="body2"
+                      color={
+                        step.status === "skipped"
+                          ? "text.secondary"
+                          : "text.primary"
+                      }
+                    >
+                      {progressText}
+                    </Typography>
+                  ) : (
+                    ""
+                  )}
+                </TableCell>
+                <TableCell>{step.attemptCount}</TableCell>
+                <TableCell>{step.errorMessage ?? ""}</TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </Paper>

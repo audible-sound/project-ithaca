@@ -50,12 +50,18 @@ export type LeadQualificationDraft = {
   leadId: string;
   workflowRunId: string;
   score: number;
-  priorityRank: number;
+  /** Set after every lead in the run has a qualify outcome. Null until then. */
+  priorityRank: number | null;
   priorityLabel: string;
   fitLabel: string;
   explanation: string;
   evidence: string[];
   criteriaBreakdown: LeadQualificationCriterion[];
+};
+
+export type LeadQualificationRankDraft = {
+  leadId: string;
+  priorityRank: number;
 };
 
 /**
@@ -107,6 +113,37 @@ export async function upsertLeadQualification(
       .update(leads)
       .set({ lifecycleStatus: "qualified", updatedAt: now })
       .where(eq(leads.leadId, draft.leadId));
+  });
+}
+
+/**
+ * Writes priority ranks after every lead in the run has a qualify outcome.
+ * Rows marked as a user override are left unchanged.
+ * @param ranks - Lead ids and their rank in this run.
+ */
+export async function updateLeadQualificationRanks(
+  ranks: LeadQualificationRankDraft[],
+): Promise<void> {
+  if (ranks.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+  await requireDb().transaction(async (tx) => {
+    for (const rank of ranks) {
+      await tx
+        .update(leadQualifications)
+        .set({
+          priorityRank: rank.priorityRank,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(leadQualifications.leadId, rank.leadId),
+            eq(leadQualifications.isUserOverride, false),
+          ),
+        );
+    }
   });
 }
 
