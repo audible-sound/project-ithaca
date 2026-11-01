@@ -7,6 +7,7 @@ import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState, type ReactElement } from "react";
 import { Link } from "react-router";
@@ -68,6 +69,15 @@ function FilterSelect({
   );
 }
 
+function matchesName(lead: LeadListItem, nameQuery: string): boolean {
+  const query = nameQuery.trim().toLowerCase();
+  if (query.length === 0) {
+    return true;
+  }
+
+  return lead.companyName.toLowerCase().includes(query);
+}
+
 function matchesOwner(lead: LeadListItem, ownerFilter: string): boolean {
   return (
     ownerFilter === allValue || ownerValue(lead.ownerId) === ownerFilter
@@ -124,6 +134,7 @@ export function LeadsPage(): ReactElement {
   const listMessage = useLeadStore((state) => state.listMessage);
   const deleteMessage = useLeadStore((state) => state.deleteMessage);
   const loadLeads = useLeadStore((state) => state.loadLeads);
+  const [nameQuery, setNameQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState(allValue);
   const [icpFilter, setIcpFilter] = useState(allValue);
   const [stageFilter, setStageFilter] = useState(allValue);
@@ -191,6 +202,7 @@ export function LeadsPage(): ReactElement {
 
   const filteredLeads = leads.filter(
     (lead) =>
+      matchesName(lead, nameQuery) &&
       matchesOwner(lead, ownerFilter) &&
       matchesIcp(lead, icpFilter) &&
       matchesStage(lead, stageFilter) &&
@@ -200,6 +212,7 @@ export function LeadsPage(): ReactElement {
   );
 
   const filtersAtAll =
+    nameQuery.trim().length === 0 &&
     ownerFilter === allValue &&
     icpFilter === allValue &&
     stageFilter === allValue &&
@@ -228,6 +241,22 @@ export function LeadsPage(): ReactElement {
             ? "Showing all leads."
             : "Showing leads that match the selected filters."}
         </Typography>
+        <TextField
+          size="small"
+          label="Name"
+          placeholder="Search by company name"
+          value={nameQuery}
+          onChange={(event) => {
+            setNameQuery(event.target.value);
+          }}
+          sx={{
+            width: 360,
+            maxWidth: "100%",
+            "& .MuiOutlinedInput-root": {
+              bgcolor: "background.paper",
+            },
+          }}
+        />
         <Stack
           direction="row"
           sx={{ flexWrap: "wrap", gap: 2, alignItems: "center" }}
