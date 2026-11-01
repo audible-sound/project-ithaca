@@ -89,6 +89,7 @@ export type {
   WorkflowLeadOutreachDraft,
   WorkflowLeadOutreachFailure,
   WorkflowLeadSource,
+  WorkflowLeadStageFailure,
   WorkflowLeadQualification,
   WorkflowLeadStatus,
   WorkflowLeadSummary,

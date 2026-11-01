@@ -179,11 +179,14 @@ export interface WorkflowLeadOutreachDraft {
   status: "draft";
 }
 
-/** One lead that the draft stage could not personalise. */
-export interface WorkflowLeadOutreachFailure {
+/** One lead that a stage could not finish. */
+export interface WorkflowLeadStageFailure {
   leadId: string;
   message: string;
 }
+
+/** One lead that the draft stage could not personalise. */
+export type WorkflowLeadOutreachFailure = WorkflowLeadStageFailure;
 
 /** Token use and dollar cost for one model call in a stage. */
 export interface AgentStageUsage {
@@ -203,8 +206,12 @@ export interface AgentStageResult {
   estimatedCost?: number;
   /** Omitted means this stage did not qualify leads. An empty array means qualify had no leads. */
   qualifications?: WorkflowLeadQualification[];
+  /** Leads that produced no score. Omitted when every lead was scored. */
+  qualificationFailures?: WorkflowLeadStageFailure[];
   /** Omitted means this stage did not summarize leads. An empty array means summarize had no leads. */
   summaries?: WorkflowLeadSummary[];
+  /** Leads that produced no summary. Omitted when every lead was summarized. */
+  summaryFailures?: WorkflowLeadStageFailure[];
   /** Omitted means this stage did not draft outreach. An empty array means draft had no leads. */
   outreachDrafts?: WorkflowLeadOutreachDraft[];
   /** Leads that produced no draft. Omitted when every lead was drafted. */

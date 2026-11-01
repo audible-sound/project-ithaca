@@ -443,15 +443,16 @@ function computePipeline(input: {
     };
 
   return leadPipelineStages.map((stage, index) => {
-    if (completedByStage[stage] || index < currentIndex) {
-      return { stage, status: "completed" };
-    }
-
+    // The step the lead is on shows the live run status, including failed.
     if (index === currentIndex) {
       return {
         stage,
         status: currentStageStatus(stage, latestRunLead, draftFinished),
       };
+    }
+
+    if (completedByStage[stage] || index < currentIndex) {
+      return { stage, status: "completed" };
     }
 
     return { stage, status: "waiting" };

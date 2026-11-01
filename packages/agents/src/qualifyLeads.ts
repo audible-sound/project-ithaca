@@ -8,6 +8,7 @@ import type {
   WorkflowLeadContact,
   WorkflowLeadContext,
   WorkflowLeadQualification,
+  WorkflowLeadStageFailure,
 } from "@ithaca/shared";
 
 const suitabilityScoreMessage = "A suitability score is produced for the lead.";
@@ -494,23 +495,50 @@ export async function qualifyLeads(
   }
 
   const scored: ScoredQualification[] = [];
+  const qualificationFailures: WorkflowLeadStageFailure[] = [];
   let modelName = "";
   let promptTokens = 0;
   let completionTokens = 0;
   let cost = 0;
+  let calledModel = false;
   const system = qualificationSystemFor(icp);
 
   for (const lead of leads) {
-    const response = await generate({
-      system,
-      prompt: qualificationPrompt(icp, lead),
-      responseSchema: qualificationResponseSchema,
-    });
-    modelName = response.modelName;
-    promptTokens += response.promptTokens;
-    completionTokens += response.completionTokens;
-    cost += response.estimatedCost;
-    scored.push(parseQualification(lead.leadId, response.text, icp));
+    try {
+      const response = await generate({
+        system,
+        prompt: qualificationPrompt(icp, lead),
+        responseSchema: qualificationResponseSchema,
+      });
+      calledModel = true;
+      modelName = response.modelName;
+      promptTokens += response.promptTokens;
+      completionTokens += response.completionTokens;
+      cost += response.estimatedCost;
+      scored.push(parseQualification(lead.leadId, response.text, icp));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Lead ${lead.leadId} qualification failed.`;
+      qualificationFailures.push({
+        leadId: lead.leadId,
+        message,
+      });
+    }
+  }
+
+  if (scored.length === 0) {
+    const message =
+      qualificationFailures[0]?.message ??
+      "Lead qualification failed for every lead.";
+    return {
+      stage: "qualify",
+      status: "failed",
+      message,
+      qualifications: [],
+      qualificationFailures,
+    };
   }
 
   const ranking = rankLeads(
@@ -535,16 +563,25 @@ export async function qualifyLeads(
     });
   }
 
-  return {
+  const result: AgentStageResult = {
     stage: "qualify",
     status: "completed",
     message: suitabilityScoreMessage,
     qualifications,
-    usage: {
+  };
+
+  if (qualificationFailures.length > 0) {
+    result.qualificationFailures = qualificationFailures;
+  }
+
+  if (calledModel) {
+    result.usage = {
       modelName,
       promptTokens,
       completionTokens,
       estimatedCost: Math.round(cost * 100_000_000) / 100_000_000,
-    },
-  };
+    };
+  }
+
+  return result;
 }

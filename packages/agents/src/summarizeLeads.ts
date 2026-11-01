@@ -6,6 +6,7 @@ import type {
   LeadStructuredReport,
   WorkflowLeadContact,
   WorkflowLeadContext,
+  WorkflowLeadStageFailure,
   WorkflowLeadSummary,
 } from "@ithaca/shared";
 
@@ -276,41 +277,77 @@ export async function summarizeLeads(
   }
 
   const summaries: WorkflowLeadSummary[] = [];
+  const summaryFailures: WorkflowLeadStageFailure[] = [];
   let modelName = "";
   let promptTokens = 0;
   let completionTokens = 0;
   let cost = 0;
+  let calledModel = false;
 
   for (const lead of leads) {
-    const qualification = qualifications.find(
-      (item) => item.leadId === lead.leadId,
-    );
-    if (qualification === undefined) {
-      throw new Error(`Lead ${lead.leadId} has no qualification.`);
-    }
+    try {
+      const qualification = qualifications.find(
+        (item) => item.leadId === lead.leadId,
+      );
+      if (qualification === undefined) {
+        throw new Error(`Lead ${lead.leadId} has no qualification.`);
+      }
 
-    const response = await generate({
-      system: summarySystem,
-      prompt: summaryPrompt(icp, lead, qualification),
-      responseSchema: summaryResponseSchema,
-    });
-    modelName = response.modelName;
-    promptTokens += response.promptTokens;
-    completionTokens += response.completionTokens;
-    cost += response.estimatedCost;
-    summaries.push(parseSummary(lead, qualification, response.text));
+      const response = await generate({
+        system: summarySystem,
+        prompt: summaryPrompt(icp, lead, qualification),
+        responseSchema: summaryResponseSchema,
+      });
+      calledModel = true;
+      modelName = response.modelName;
+      promptTokens += response.promptTokens;
+      completionTokens += response.completionTokens;
+      cost += response.estimatedCost;
+      summaries.push(parseSummary(lead, qualification, response.text));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Lead ${lead.leadId} summary failed.`;
+      summaryFailures.push({
+        leadId: lead.leadId,
+        message,
+      });
+    }
   }
 
-  return {
+  if (summaries.length === 0) {
+    const message =
+      summaryFailures[0]?.message ??
+      "Lead summary failed for every lead.";
+    return {
+      stage: "summarize",
+      status: "failed",
+      message,
+      summaries: [],
+      summaryFailures,
+    };
+  }
+
+  const result: AgentStageResult = {
     stage: "summarize",
     status: "completed",
     message: structuredSummaryMessage,
     summaries,
-    usage: {
+  };
+
+  if (summaryFailures.length > 0) {
+    result.summaryFailures = summaryFailures;
+  }
+
+  if (calledModel) {
+    result.usage = {
       modelName,
       promptTokens,
       completionTokens,
       estimatedCost: Math.round(cost * 100_000_000) / 100_000_000,
-    },
-  };
+    };
+  }
+
+  return result;
 }
