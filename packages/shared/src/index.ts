@@ -87,6 +87,8 @@ export type {
   LeadWorkflowResult,
   ListWorkflowRunsResponse,
   QualificationFitLabel,
+  RetryWorkflowRunRequest,
+  RetryWorkflowRunResponse,
   StartWorkflowRunRequest,
   StartWorkflowRunResponse,
   WorkflowLeadContact,

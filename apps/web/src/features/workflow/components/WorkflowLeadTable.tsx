@@ -1,4 +1,5 @@
-import type { WorkflowRunLead } from "@ithaca/shared";
+import type { WorkflowRunLead, WorkflowRunStatus } from "@ithaca/shared";
+import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -14,7 +15,10 @@ import { WorkflowStatusText } from "./WorkflowStatusText";
 type WorkflowLeadTableProps = {
   workflowRunId: string;
   leads: WorkflowRunLead[];
+  runStatus: WorkflowRunStatus;
   emptyMessage?: string;
+  onRetryLead?: (leadId: string) => void;
+  retryDisabled?: boolean;
 };
 
 const headerCellSx = {
@@ -25,10 +29,25 @@ const headerCellSx = {
   },
 } as const;
 
+const retryableStages = new Set(["qualify", "summarize", "draft"]);
+
+function canRetryLead(
+  lead: WorkflowRunLead,
+  runStatus: WorkflowRunStatus,
+): boolean {
+  if (runStatus === "pending" || runStatus === "running") {
+    return false;
+  }
+  return lead.status === "failed" && retryableStages.has(lead.currentStage);
+}
+
 export function WorkflowLeadTable({
   workflowRunId,
   leads,
+  runStatus,
   emptyMessage = "No leads in this run.",
+  onRetryLead,
+  retryDisabled = false,
 }: WorkflowLeadTableProps): ReactElement {
   if (leads.length === 0) {
     return (
@@ -40,6 +59,8 @@ export function WorkflowLeadTable({
     );
   }
 
+  const showActions = leads.some((lead) => canRetryLead(lead, runStatus));
+
   return (
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
       <Table>
@@ -49,10 +70,13 @@ export function WorkflowLeadTable({
             <TableCell>Source</TableCell>
             <TableCell>Stage</TableCell>
             <TableCell>Status</TableCell>
+            <TableCell>Attempts</TableCell>
+            {showActions ? <TableCell>Actions</TableCell> : null}
           </TableRow>
         </TableHead>
         <TableBody>
           {leads.map((lead) => {
+            const showRetry = canRetryLead(lead, runStatus);
             return (
               <TableRow key={lead.leadId}>
                 <TableCell>
@@ -86,6 +110,23 @@ export function WorkflowLeadTable({
                 <TableCell>
                   <WorkflowStatusText status={lead.status} />
                 </TableCell>
+                <TableCell>{lead.attemptCount}</TableCell>
+                {showActions ? (
+                  <TableCell>
+                    {showRetry && onRetryLead ? (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        disabled={retryDisabled}
+                        onClick={() => {
+                          onRetryLead(lead.leadId);
+                        }}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                ) : null}
               </TableRow>
             );
           })}

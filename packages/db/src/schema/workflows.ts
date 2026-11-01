@@ -56,6 +56,7 @@ export const workflowRunLeads = pgTable(
       .references(() => leads.leadId, { onDelete: "restrict" }),
     currentStage: text("current_stage").notNull(),
     status: text("status").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
     errorMessage: text("error_message"),
   },
   (table) => [

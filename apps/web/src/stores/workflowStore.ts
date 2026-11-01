@@ -2,6 +2,8 @@ import type {
   ListLeadsResponse,
   ListWorkflowRunsResponse,
   LeadSummary,
+  RetryWorkflowRunRequest,
+  RetryWorkflowRunResponse,
   StartWorkflowRunRequest,
   StartWorkflowRunResponse,
   WorkflowRunDetail,
@@ -23,6 +25,8 @@ type WorkflowStore = {
   leadMessage: string | null;
   startStatus: RequestStatus;
   startMessage: string | null;
+  retryStatus: RequestStatus;
+  retryMessage: string | null;
   loadRuns: () => Promise<void>;
   loadRun: (workflowRunId: string) => Promise<void>;
   loadLeads: () => Promise<void>;
@@ -31,6 +35,10 @@ type WorkflowStore = {
     leadIds: string[];
     useSelectedLeadsOnly: boolean;
   }) => Promise<string | null>;
+  retryRun: (
+    workflowRunId: string,
+    input: RetryWorkflowRunRequest,
+  ) => Promise<boolean>;
   clearStart: () => void;
 };
 
@@ -46,6 +54,8 @@ export const useWorkflowStore = create<WorkflowStore>()((set, get) => ({
   leadMessage: null,
   startStatus: "idle",
   startMessage: null,
+  retryStatus: "idle",
+  retryMessage: null,
   clearStart: () => {
     set({ startStatus: "idle", startMessage: null });
   },
@@ -218,6 +228,54 @@ export const useWorkflowStore = create<WorkflowStore>()((set, get) => ({
         startStatus: "error",
       });
       return null;
+    }
+  },
+  retryRun: async (workflowRunId, input) => {
+    const token = authToken();
+    if (!token) {
+      set({
+        retryStatus: "error",
+        retryMessage: "Authentication required.",
+      });
+      return false;
+    }
+
+    set({ retryStatus: "loading", retryMessage: null });
+
+    try {
+      const res = await fetch(
+        `${apiUrl}/workflow/runs/${workflowRunId}/retry`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(input),
+        },
+      );
+      const data = await readJson<Partial<RetryWorkflowRunResponse>>(res);
+      if (!res.ok || !("workflowRunId" in data) || !data.workflowRunId) {
+        set({
+          retryMessage: data.message ?? "Failed to reach API",
+          retryStatus: "error",
+        });
+        return false;
+      }
+
+      set({
+        retryMessage: data.message ?? null,
+        retryStatus: "ready",
+      });
+      await get().loadRun(workflowRunId);
+      return true;
+    } catch (err) {
+      set({
+        retryMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+        retryStatus: "error",
+      });
+      return false;
     }
   },
 }));

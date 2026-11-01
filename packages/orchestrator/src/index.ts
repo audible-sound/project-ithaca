@@ -3,5 +3,16 @@ export type {
   ReviseOutreachDraftInput,
   ReviseOutreachDraftResult,
 } from "./reviseOutreachDraft.js";
-export { runLeadWorkflow } from "./runLeadWorkflow.js";
-export type { RunLeadWorkflowInput } from "./runLeadWorkflow.js";
+export {
+  retryFailedIdentify,
+  retryFailedLead,
+  runLeadWorkflow,
+  runPersisted,
+} from "./runLeadWorkflow.js";
+export type {
+  RetryFailedIdentifyInput,
+  RetryFailedLeadInput,
+  RunLeadWorkflowInput,
+  WorkflowPersistence,
+  WorkflowStageRunners,
+} from "./runLeadWorkflow.js";

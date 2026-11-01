@@ -1,5 +1,10 @@
 import { workflowStepTypes } from "@ithaca/shared";
-import type { WorkflowRunLead, WorkflowStep } from "@ithaca/shared";
+import type {
+  WorkflowRunLead,
+  WorkflowRunStatus,
+  WorkflowStep,
+} from "@ithaca/shared";
+import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -19,6 +24,9 @@ import { WorkflowStatusText } from "./WorkflowStatusText";
 type WorkflowStepTableProps = {
   steps: WorkflowStep[];
   leads: WorkflowRunLead[];
+  runStatus: WorkflowRunStatus;
+  onRetryIdentify?: () => void;
+  retryDisabled?: boolean;
 };
 
 const headerCellSx = {
@@ -55,10 +63,27 @@ function stepProgressText(
   return formatStepLeadProgress(progress);
 }
 
+function canRetryIdentify(
+  step: WorkflowStep,
+  runStatus: WorkflowRunStatus,
+): boolean {
+  if (runStatus === "pending" || runStatus === "running") {
+    return false;
+  }
+  return step.stepType === "identify" && step.status === "failed";
+}
+
 export function WorkflowStepTable({
   steps,
   leads,
+  runStatus,
+  onRetryIdentify,
+  retryDisabled = false,
 }: WorkflowStepTableProps): ReactElement {
+  const showActions = orderedSteps(steps).some((step) =>
+    canRetryIdentify(step, runStatus),
+  );
+
   return (
     <Paper elevation={0} sx={{ border: 1, borderColor: "divider" }}>
       <Table>
@@ -69,11 +94,13 @@ export function WorkflowStepTable({
             <TableCell>Leads</TableCell>
             <TableCell>Attempts</TableCell>
             <TableCell>Error</TableCell>
+            {showActions ? <TableCell>Actions</TableCell> : null}
           </TableRow>
         </TableHead>
         <TableBody>
           {orderedSteps(steps).map((step) => {
             const progressText = stepProgressText(step, leads);
+            const showRetry = canRetryIdentify(step, runStatus);
             return (
               <TableRow key={step.workflowStepId}>
                 <TableCell>{workflowLabel(step.stepType)}</TableCell>
@@ -98,6 +125,20 @@ export function WorkflowStepTable({
                 </TableCell>
                 <TableCell>{step.attemptCount}</TableCell>
                 <TableCell>{step.errorMessage ?? ""}</TableCell>
+                {showActions ? (
+                  <TableCell>
+                    {showRetry && onRetryIdentify ? (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        disabled={retryDisabled}
+                        onClick={onRetryIdentify}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                ) : null}
               </TableRow>
             );
           })}

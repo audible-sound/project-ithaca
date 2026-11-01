@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_run_leads" ADD COLUMN "attempt_count" integer DEFAULT 0 NOT NULL;

@@ -247,7 +247,19 @@ export interface WorkflowRunLead {
   sourceType: "manual" | "identified";
   currentStage: WorkflowStage;
   status: WorkflowLeadStatus;
+  attemptCount: number;
   errorMessage: string | null;
+}
+
+export interface RetryWorkflowRunRequest {
+  leadId?: string;
+  /** Only `identify` is accepted. Qualifying stages retry by lead. */
+  stepType?: "identify";
+}
+
+export interface RetryWorkflowRunResponse {
+  message: string;
+  workflowRunId: string;
 }
 
 export interface WorkflowRunSummary {

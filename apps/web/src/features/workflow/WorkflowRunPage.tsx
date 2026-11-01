@@ -25,7 +25,10 @@ export function WorkflowRunPage(): ReactElement {
   const run = useWorkflowStore((state) => state.run);
   const runStatus = useWorkflowStore((state) => state.runStatus);
   const runMessage = useWorkflowStore((state) => state.runMessage);
+  const retryStatus = useWorkflowStore((state) => state.retryStatus);
+  const retryMessage = useWorkflowStore((state) => state.retryMessage);
   const loadRun = useWorkflowStore((state) => state.loadRun);
+  const retryRun = useWorkflowStore((state) => state.retryRun);
 
   const visibleRun =
     run && workflowRunId && run.workflowRunId === workflowRunId ? run : null;
@@ -66,6 +69,8 @@ export function WorkflowRunPage(): ReactElement {
     .filter((part) => part && part.length > 0)
     .join(" · ");
 
+  const retryDisabled = retryStatus === "loading";
+
   return (
     <Stack spacing={3}>
       <Stack spacing={1}>
@@ -87,9 +92,22 @@ export function WorkflowRunPage(): ReactElement {
       {runStatus === "error" && runMessage ? (
         <Alert severity="error">{runMessage}</Alert>
       ) : null}
+      {retryStatus === "error" && retryMessage ? (
+        <Alert severity="error">{retryMessage}</Alert>
+      ) : null}
       {visibleRun ? (
         <>
-          <WorkflowStepTable steps={visibleRun.steps} leads={visibleRun.leads} />
+          <WorkflowStepTable
+            steps={visibleRun.steps}
+            leads={visibleRun.leads}
+            runStatus={visibleRun.status}
+            retryDisabled={retryDisabled}
+            onRetryIdentify={() => {
+              void retryRun(visibleRun.workflowRunId, {
+                stepType: "identify",
+              });
+            }}
+          />
           {visibleRun.status === "failed" && visibleRun.errorMessage ? (
             <Alert severity="error">{visibleRun.errorMessage}</Alert>
           ) : null}
@@ -98,6 +116,11 @@ export function WorkflowRunPage(): ReactElement {
             <WorkflowLeadTable
               workflowRunId={visibleRun.workflowRunId}
               leads={visibleRun.leads}
+              runStatus={visibleRun.status}
+              retryDisabled={retryDisabled}
+              onRetryLead={(leadId) => {
+                void retryRun(visibleRun.workflowRunId, { leadId });
+              }}
               emptyMessage={
                 searchReturnedNoCompanies(visibleRun)
                   ? noMatchingCompaniesMessage

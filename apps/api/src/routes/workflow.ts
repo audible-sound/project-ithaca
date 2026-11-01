@@ -1,6 +1,9 @@
 import {
+  claimFailedWorkflowRunLead,
+  claimFailedWorkflowStep,
   findIdealCustomerProfileById,
   findWorkflowRunById,
+  findWorkflowStepByRunAndType,
   insertWorkflowRun,
   insertWorkflowRunLeads,
   insertWorkflowSteps,
@@ -8,13 +11,18 @@ import {
   listWorkflowRunLeadsByRunId,
   listWorkflowRunsByUser,
   listWorkflowStepsByRunId,
+  updateWorkflowRunStatus,
 } from "@ithaca/db";
 import type {
   WorkflowRun as WorkflowRunRow,
   WorkflowRunLeadListRow,
   WorkflowStep as WorkflowStepRow,
 } from "@ithaca/db";
-import { runLeadWorkflow } from "@ithaca/orchestrator";
+import {
+  retryFailedIdentify,
+  retryFailedLead,
+  runLeadWorkflow,
+} from "@ithaca/orchestrator";
 import {
   workflowLeadStatuses,
   workflowRunStatuses,
@@ -26,6 +34,7 @@ import type {
   IdealCustomerProfile,
   IdealCustomerProfileInput,
   ListWorkflowRunsResponse,
+  RetryWorkflowRunResponse,
   StartWorkflowRunResponse,
   WorkflowLeadStatus,
   WorkflowRunDetail,
@@ -46,6 +55,11 @@ import { profileInactiveMessage } from "../lib/profileInput.js";
 export const workflowRouter = Router();
 
 const workflowStartedMessage = "Workflow run started.";
+const workflowRetryStartedMessage = "Workflow retry started.";
+const workflowStillRunningMessage = "Workflow run is still running.";
+const workflowLeadCannotRetryMessage = "Workflow lead cannot be retried.";
+const workflowStepCannotRetryMessage = "Workflow step cannot be retried.";
+const retryableLeadStages = ["qualify", "summarize", "draft"] as const;
 
 function includesValue<T extends string>(
   allowed: readonly T[],
@@ -133,6 +147,7 @@ function mapRunLead(row: WorkflowRunLeadListRow): WorkflowRunLead {
     sourceType: leadSourceType(row.sourceType),
     currentStage: workflowStage(row.currentStage),
     status: workflowLeadStatus(row.status),
+    attemptCount: row.attemptCount,
     errorMessage: row.errorMessage,
   };
 }
@@ -405,6 +420,151 @@ workflowRouter.get("/runs/:workflowRunId", async (req, res) => {
       leads: leads.map(mapRunLead),
     };
     res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+function isRetryableLeadStage(
+  value: string,
+): value is (typeof retryableLeadStages)[number] {
+  return retryableLeadStages.some((stage) => stage === value);
+}
+
+// Retries a failed identify step or a failed lead stage.
+workflowRouter.post("/runs/:workflowRunId/retry", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const workflowRunId = req.params.workflowRunId;
+  if (!isUuid(workflowRunId)) {
+    res.status(404).json({ message: "Workflow run not found." });
+    return;
+  }
+
+  const body = asRecord(req.body);
+  const leadIdRaw = body.leadId;
+  const stepTypeRaw = body.stepType;
+  const hasLeadId = leadIdRaw !== undefined;
+  const hasStepType = stepTypeRaw !== undefined;
+
+  if (hasLeadId === hasStepType) {
+    res.status(400).json({
+      message: "Provide either leadId or stepType identify.",
+    });
+    return;
+  }
+
+  try {
+    const row = await findWorkflowRunById(workflowRunId, userId);
+    if (!row) {
+      res.status(404).json({ message: "Workflow run not found." });
+      return;
+    }
+
+    if (row.status === "pending" || row.status === "running") {
+      res.status(409).json({ message: workflowStillRunningMessage });
+      return;
+    }
+
+    const profile = await findIdealCustomerProfileById(row.icpId, userId);
+    if (!profile) {
+      res.status(404).json({ message: "Ideal customer profile not found." });
+      return;
+    }
+
+    if (!profile.isActive) {
+      res.status(409).json({ message: profileInactiveMessage });
+      return;
+    }
+
+    const icp = toWorkflowIcp(mapProfile(profile));
+
+    if (hasLeadId) {
+      const leadId = readText(leadIdRaw);
+      if (!leadId || !isUuid(leadId)) {
+        res.status(404).json({ message: "Lead not found." });
+        return;
+      }
+
+      const claimed = await claimFailedWorkflowRunLead(workflowRunId, leadId);
+      if (!claimed || !isRetryableLeadStage(claimed.currentStage)) {
+        res.status(409).json({ message: workflowLeadCannotRetryMessage });
+        return;
+      }
+
+      await updateWorkflowRunStatus(workflowRunId, {
+        status: "running",
+        completedAt: null,
+        errorMessage: null,
+      });
+
+      void retryFailedLead({
+        workflowRunId,
+        userId,
+        icp,
+        leadId,
+        firstAttemptCount: claimed.attemptCount,
+        startStage: claimed.currentStage,
+      }).catch((err: unknown) => {
+        console.error(err);
+      });
+
+      const response: RetryWorkflowRunResponse = {
+        message: workflowRetryStartedMessage,
+        workflowRunId,
+      };
+      res.status(202).json(response);
+      return;
+    }
+
+    const stepType = readText(stepTypeRaw);
+    if (stepType !== "identify") {
+      res.status(400).json({
+        message: "Provide either leadId or stepType identify.",
+      });
+      return;
+    }
+
+    const identifyStep = await findWorkflowStepByRunAndType(
+      workflowRunId,
+      "identify",
+    );
+    if (!identifyStep) {
+      res.status(404).json({ message: "Workflow run not found." });
+      return;
+    }
+
+    const claimedStep = await claimFailedWorkflowStep(
+      identifyStep.workflowStepId,
+    );
+    if (!claimedStep) {
+      res.status(409).json({ message: workflowStepCannotRetryMessage });
+      return;
+    }
+
+    await updateWorkflowRunStatus(workflowRunId, {
+      status: "running",
+      completedAt: null,
+      errorMessage: null,
+    });
+
+    void retryFailedIdentify({
+      workflowRunId,
+      userId,
+      icp,
+      firstAttemptCount: claimedStep.attemptCount,
+    }).catch((err: unknown) => {
+      console.error(err);
+    });
+
+    const response: RetryWorkflowRunResponse = {
+      message: workflowRetryStartedMessage,
+      workflowRunId,
+    };
+    res.status(202).json(response);
   } catch (err) {
     sendFailure(res, err);
   }

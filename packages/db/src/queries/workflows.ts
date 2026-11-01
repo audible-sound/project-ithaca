@@ -40,6 +40,7 @@ export type WorkflowRunLeadDraft = {
   leadId: string;
   currentStage: WorkflowStage;
   status: WorkflowLeadStatus;
+  attemptCount?: number;
 };
 
 export type TokenUsageDraft = {
@@ -71,6 +72,7 @@ export type WorkflowStepStatusPatch = {
 export type WorkflowRunLeadStatusPatch = {
   currentStage?: WorkflowStage;
   status?: WorkflowLeadStatus;
+  attemptCount?: number;
   errorMessage?: string | null;
 };
 
@@ -162,6 +164,7 @@ export async function listWorkflowRunLeadsByRunId(
       leadId: workflowRunLeads.leadId,
       currentStage: workflowRunLeads.currentStage,
       status: workflowRunLeads.status,
+      attemptCount: workflowRunLeads.attemptCount,
       errorMessage: workflowRunLeads.errorMessage,
       companyName: companies.name,
       sourceType: leads.sourceType,
@@ -193,6 +196,7 @@ export async function listWorkflowRunLeadsByLeadId(
       leadId: workflowRunLeads.leadId,
       currentStage: workflowRunLeads.currentStage,
       status: workflowRunLeads.status,
+      attemptCount: workflowRunLeads.attemptCount,
       errorMessage: workflowRunLeads.errorMessage,
       runStatus: workflowRuns.status,
       runStartedAt: workflowRuns.startedAt,
@@ -289,6 +293,7 @@ export async function insertWorkflowRunLeads(
         leadId: draft.leadId,
         currentStage: draft.currentStage,
         status: draft.status,
+        attemptCount: draft.attemptCount ?? 0,
         errorMessage: null,
       })),
     )
@@ -435,4 +440,85 @@ export async function updateWorkflowRunLeadStatus(
   }
 
   return row;
+}
+
+const retryableLeadStages = ["qualify", "summarize", "draft"] as const;
+
+/**
+ * Claims a failed lead for a manual retry. Increments attempt_count only when
+ * the lead is still failed at qualify, summarize, or draft.
+ * @returns The claimed row, or null when the lead cannot be retried.
+ */
+export async function claimFailedWorkflowRunLead(
+  workflowRunId: string,
+  leadId: string,
+): Promise<WorkflowRunLead | null> {
+  const rows = await requireDb()
+    .update(workflowRunLeads)
+    .set({
+      status: "running",
+      errorMessage: null,
+      attemptCount: sql`${workflowRunLeads.attemptCount} + 1`,
+    })
+    .where(
+      and(
+        eq(workflowRunLeads.workflowRunId, workflowRunId),
+        eq(workflowRunLeads.leadId, leadId),
+        eq(workflowRunLeads.status, "failed"),
+        inArray(workflowRunLeads.currentStage, [...retryableLeadStages]),
+      ),
+    )
+    .returning();
+
+  return rows[0] ?? null;
+}
+
+/**
+ * Claims a failed workflow step for a manual retry. Increments attempt_count
+ * only when the step is still failed.
+ * @returns The claimed row, or null when the step cannot be retried.
+ */
+export async function claimFailedWorkflowStep(
+  workflowStepId: string,
+): Promise<WorkflowStep | null> {
+  const rows = await requireDb()
+    .update(workflowSteps)
+    .set({
+      status: "running",
+      errorMessage: null,
+      startedAt: new Date(),
+      completedAt: null,
+      durationMs: null,
+      attemptCount: sql`${workflowSteps.attemptCount} + 1`,
+    })
+    .where(
+      and(
+        eq(workflowSteps.workflowStepId, workflowStepId),
+        eq(workflowSteps.status, "failed"),
+      ),
+    )
+    .returning();
+
+  return rows[0] ?? null;
+}
+
+/**
+ * Finds one workflow step for a run by step type.
+ */
+export async function findWorkflowStepByRunAndType(
+  workflowRunId: string,
+  stepType: WorkflowStepType,
+): Promise<WorkflowStep | null> {
+  const rows = await requireDb()
+    .select()
+    .from(workflowSteps)
+    .where(
+      and(
+        eq(workflowSteps.workflowRunId, workflowRunId),
+        eq(workflowSteps.stepType, stepType),
+      ),
+    )
+    .limit(1);
+
+  return rows[0] ?? null;
 }
