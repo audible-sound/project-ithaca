@@ -37,6 +37,7 @@ export type LeadListDetailRow = Lead & {
   priorityLabel: string | null;
   qualificationOverridden: boolean | null;
   latestStage: string | null;
+  latestOutreachStatus: string | null;
   followUpDueAt: Date | null;
   icps: LeadListDetailIcp[];
 };
@@ -716,20 +717,32 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
     }
   }
 
-  const followUpRows = await db
+  const outreachRows = await db
     .select({
       leadId: outreachDrafts.leadId,
+      status: outreachDrafts.status,
+      createdAt: outreachDrafts.createdAt,
+      outreachDraftId: outreachDrafts.outreachDraftId,
       followUpDueAt: emailDeliveries.followUpDueAt,
     })
     .from(outreachDrafts)
-    .innerJoin(
+    .leftJoin(
       emailDeliveries,
       eq(emailDeliveries.outreachDraftId, outreachDrafts.outreachDraftId),
     )
-    .where(inArray(outreachDrafts.leadId, leadIds));
+    .where(inArray(outreachDrafts.leadId, leadIds))
+    .orderBy(
+      desc(outreachDrafts.createdAt),
+      desc(outreachDrafts.outreachDraftId),
+    );
 
+  const latestOutreachStatusByLeadId = new Map<string, string>();
   const followUpDueAtByLeadId = new Map<string, Date>();
-  for (const row of followUpRows) {
+  for (const row of outreachRows) {
+    if (!latestOutreachStatusByLeadId.has(row.leadId)) {
+      latestOutreachStatusByLeadId.set(row.leadId, row.status);
+    }
+
     if (row.followUpDueAt === null) {
       continue;
     }
@@ -745,6 +758,7 @@ export async function listLeadsWithDetails(): Promise<LeadListDetailRow[]> {
   return rows.map((row) => ({
     ...row,
     latestStage: latestStageByLeadId.get(row.leadId) ?? null,
+    latestOutreachStatus: latestOutreachStatusByLeadId.get(row.leadId) ?? null,
     followUpDueAt: followUpDueAtByLeadId.get(row.leadId) ?? null,
     icps: icpsByLeadId.get(row.leadId) ?? [],
   }));

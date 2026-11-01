@@ -111,20 +111,34 @@ function leadPriority(value: string | null): LeadPriority | null {
  * Stage label for the leads table.
  * A running workflow's current step wins, except when the lead needs
  * a follow-up or is already closed. Those come from the lifecycle status.
+ * An unsent outreach draft keeps the lead in draft even when an older
+ * run already says done.
  */
 function leadListStageFrom(
   lifecycleStatus: string,
   latestStage: string | null,
+  latestOutreachStatus: string | null,
 ): LeadListStage {
   if (!includesValue(leadLifecycleStatuses, lifecycleStatus)) {
     throw new Error(`Unexpected lead lifecycle status "${lifecycleStatus}".`);
   }
 
   if (
-    lifecycleStatus !== "needs_follow_up" &&
-    lifecycleStatus !== "closed" &&
-    latestStage !== null
+    lifecycleStatus === "needs_follow_up" ||
+    lifecycleStatus === "closed" ||
+    lifecycleStatus === "outreach_sent"
   ) {
+    return lifecycleListStage[lifecycleStatus];
+  }
+
+  if (
+    latestOutreachStatus !== null &&
+    latestOutreachStatus !== "sent"
+  ) {
+    return "draft";
+  }
+
+  if (latestStage !== null) {
     if (!includesValue(workflowStages, latestStage)) {
       throw new Error(`Unexpected lead stage "${latestStage}".`);
     }
@@ -273,14 +287,20 @@ function parseStructuredReport(value: unknown): StructuredReport {
 /**
  * Label for the step the lead is on right now.
  * Follow-up has no agent run, so it stays "current".
+ * Draft stays current until the message is sent or marked done.
  * A failed or still-running workflow is shown as such.
  * Anything else on this step counts as finished or still waiting.
  */
 function currentStageStatus(
   stage: (typeof leadPipelineStages)[number],
   latestRunLead: WorkflowRunLeadByLeadRow | null,
+  draftFinished: boolean,
 ): LeadPipelineStageStatus {
   if (stage === "follow_up") {
+    return "current";
+  }
+
+  if (stage === "draft" && !draftFinished) {
     return "current";
   }
 
@@ -331,9 +351,11 @@ function computePipeline(input: {
     outreachRow,
   } = input;
   const isClosed = row.lifecycleStatus === "closed";
+  const draftFinished = outreachRow?.status === "sent";
   const isFollowUpStage =
     row.lifecycleStatus === "needs_follow_up" ||
     row.lifecycleStatus === "outreach_sent" ||
+    draftFinished ||
     hasOutreachActivity(outreachRow);
 
   if (latestRunLead === null && row.lifecycleStatus === "new") {
@@ -344,23 +366,28 @@ function computePipeline(input: {
   }
 
   // Follow-up and closed leads are on the last step.
+  // An unsent draft stays on draft even when an older run says done.
   // Otherwise prefer the workflow run, then the lifecycle status.
   let currentIndex: number;
   if (isFollowUpStage || isClosed) {
     currentIndex = 4;
+  } else if (hasOutreach && !draftFinished) {
+    currentIndex = 3;
   } else if (latestRunLead !== null) {
-    currentIndex = stageIndexFromRunStage(latestRunLead.currentStage);
+    const runIndex = stageIndexFromRunStage(latestRunLead.currentStage);
+    currentIndex = !draftFinished && runIndex >= 3 ? 3 : runIndex;
   } else {
     currentIndex = stageIndexFromLifecycle(row.lifecycleStatus);
   }
 
   // A step is done when we already have its saved output.
+  // Draft completes only after send or done.
   const completedByStage: Record<(typeof leadPipelineStages)[number], boolean> =
     {
       identify: true,
       qualify: hasQualification,
       summarize: hasSummary,
-      draft: hasOutreach,
+      draft: draftFinished,
       follow_up: (outreachRow?.repliedAt ?? null) !== null || isClosed,
     };
 
@@ -370,7 +397,10 @@ function computePipeline(input: {
     }
 
     if (index === currentIndex) {
-      return { stage, status: currentStageStatus(stage, latestRunLead) };
+      return {
+        stage,
+        status: currentStageStatus(stage, latestRunLead, draftFinished),
+      };
     }
 
     return { stage, status: "waiting" };
@@ -407,7 +437,11 @@ export function mapLeadListItem(row: LeadListDetailRow): LeadListItem {
     score,
     priority: leadPriority(row.priorityLabel),
     qualificationOverridden: row.qualificationOverridden ?? false,
-    stage: leadListStageFrom(row.lifecycleStatus, row.latestStage),
+    stage: leadListStageFrom(
+      row.lifecycleStatus,
+      row.latestStage,
+      row.latestOutreachStatus,
+    ),
     followUpDue: isFollowUpDue(row.lifecycleStatus, row.followUpDueAt),
     icps: row.icps,
   };
@@ -473,6 +507,7 @@ export function mapLeadDetail(input: {
     stage: leadListStageFrom(
       row.lifecycleStatus,
       latestRunLead?.currentStage ?? null,
+      outreachRow?.status ?? null,
     ),
     followUpDue: isFollowUpDue(
       row.lifecycleStatus,
@@ -533,6 +568,9 @@ export function mapLeadDetail(input: {
           generatedBody: outreachRow.generatedBody ?? outreachRow.body,
           status: outreachRow.status,
           isUserEdited: outreachRow.isUserEdited,
+          approvedAt: toIso(outreachRow.approvedAt),
+          rejectedAt: toIso(outreachRow.rejectedAt),
+          updatedAt: toIso(outreachRow.updatedAt),
           workflowRunId: outreachRow.workflowRunId,
         }
       : null,

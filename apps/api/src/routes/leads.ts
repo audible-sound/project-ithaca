@@ -1,4 +1,7 @@
 import {
+  approveOutreachDraft,
+  cancelOutreachDraftSend,
+  completeOutreachDraftSend,
   deleteLead,
   findLatestOutreachByLeadId,
   findLeadDetailById,
@@ -7,22 +10,30 @@ import {
   listLeadsWithDetails,
   listSourceReferencesByLeadId,
   listWorkflowRunLeadsByLeadId,
+  markOutreachDraftDone,
+  prepareOutreachDraftSend,
+  rejectOutreachDraft,
   updateLeadFacts,
   updateLeadQualificationOverride,
   updateLeadSummaryOverride,
   updateOutreachDraft,
 } from "@ithaca/db";
+import { sendEmail } from "@ithaca/email";
 import { reviseOutreachDraft } from "@ithaca/orchestrator";
 import type {
+  ApproveLeadOutreachResponse,
   CreateLeadResponse,
   DeleteLeadResponse,
+  DoneLeadOutreachResponse,
   EditLeadOutreachResponse,
   EditLeadSummaryResponse,
   LeadDetail,
   ListLeadListResponse,
   ListLeadsResponse,
   OverrideLeadQualificationResponse,
+  RejectLeadOutreachResponse,
   ReviseLeadOutreachResponse,
+  SendLeadOutreachResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
 import { qualificationLabelsForScore } from "@ithaca/shared";
@@ -33,9 +44,22 @@ import {
   leadDeletedMessage,
   leadStoredMessage,
   leadUpdatedMessage,
+  outreachAlreadyDoneMessage,
+  outreachAlreadySentMessage,
+  outreachApprovedMessage,
+  outreachDoneMessage,
   outreachEditedMessage,
+  outreachMissingDoneMessage,
   outreachMissingMessage,
+  outreachMissingReviewMessage,
+  outreachMissingSendMessage,
+  outreachNotApprovedMessage,
   outreachNotEditableMessage,
+  outreachNotReviewableMessage,
+  outreachRecipientRequiredMessage,
+  outreachRejectedMessage,
+  outreachRequiredMessage,
+  outreachSentMessage,
   qualificationMissingMessage,
   qualificationOverriddenMessage,
   readManualLead,
@@ -371,6 +395,233 @@ leadsRouter.put("/:leadId/outreach", async (req, res) => {
 
     const response: EditLeadOutreachResponse = {
       message: outreachEditedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Approve an outreach draft owned by the signed-in user. Does not send mail.
+leadsRouter.post("/:leadId/outreach/approve", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const result = await approveOutreachDraft(leadId, userId);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result === "not_drafted") {
+      res.status(409).json({ message: outreachMissingReviewMessage });
+      return;
+    }
+    if (result === "not_reviewable") {
+      res.status(409).json({ message: outreachNotReviewableMessage });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Outreach draft was not approved.");
+    }
+
+    const response: ApproveLeadOutreachResponse = {
+      message: outreachApprovedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Reject an outreach draft owned by the signed-in user. Does not send mail.
+leadsRouter.post("/:leadId/outreach/reject", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const result = await rejectOutreachDraft(leadId, userId);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result === "not_drafted") {
+      res.status(409).json({ message: outreachMissingReviewMessage });
+      return;
+    }
+    if (result === "not_reviewable") {
+      res.status(409).json({ message: outreachNotReviewableMessage });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Outreach draft was not rejected.");
+    }
+
+    const response: RejectLeadOutreachResponse = {
+      message: outreachRejectedMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Send an approved outreach draft owned by the signed-in user through SMTP.
+leadsRouter.post("/:leadId/outreach/send", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const prepared = await prepareOutreachDraftSend(leadId, userId);
+    if (prepared.status === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (prepared.status === "not_drafted") {
+      res.status(409).json({ message: outreachMissingSendMessage });
+      return;
+    }
+    if (prepared.status === "not_approved") {
+      res.status(409).json({ message: outreachNotApprovedMessage });
+      return;
+    }
+    if (prepared.status === "already_sent") {
+      res.status(409).json({ message: outreachAlreadySentMessage });
+      return;
+    }
+    if (prepared.status === "already_done") {
+      res.status(409).json({ message: outreachAlreadyDoneMessage });
+      return;
+    }
+    if (prepared.status === "blank_message") {
+      res.status(409).json({ message: outreachRequiredMessage });
+      return;
+    }
+    if (prepared.status === "no_recipient") {
+      res.status(409).json({ message: outreachRecipientRequiredMessage });
+      return;
+    }
+
+    let mailResult;
+    try {
+      mailResult = await sendEmail({
+        to: prepared.contactEmail,
+        subject: prepared.subject,
+        body: prepared.body,
+      });
+    } catch (err) {
+      await cancelOutreachDraftSend(prepared.emailDeliveryId);
+      throw err;
+    }
+
+    if (mailResult.status !== "sent") {
+      await cancelOutreachDraftSend(prepared.emailDeliveryId);
+      res.status(502).json({
+        message: mailResult.errorMessage ?? "SMTP send failed.",
+      });
+      return;
+    }
+
+    const completed = await completeOutreachDraftSend(
+      leadId,
+      userId,
+      prepared.emailDeliveryId,
+      mailResult.providerMessageId,
+    );
+    if (completed === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Outreach message was not sent.");
+    }
+
+    const response: SendLeadOutreachResponse = {
+      message: outreachSentMessage,
+      lead,
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    sendFailure(res, err);
+  }
+});
+
+// Mark an approved outreach draft done without sending mail.
+leadsRouter.post("/:leadId/outreach/done", async (req, res) => {
+  const userId = req.auth?.sub;
+  if (!signedInUserId(res, userId)) {
+    return;
+  }
+
+  const leadId = req.params.leadId;
+  if (!leadId || !isUuid(leadId)) {
+    res.status(404).json(leadNotFound);
+    return;
+  }
+
+  try {
+    const result = await markOutreachDraftDone(leadId, userId);
+    if (result === "not_found") {
+      res.status(404).json(leadNotFound);
+      return;
+    }
+    if (result === "not_drafted") {
+      res.status(409).json({ message: outreachMissingDoneMessage });
+      return;
+    }
+    if (result === "not_approved") {
+      res.status(409).json({ message: outreachNotApprovedMessage });
+      return;
+    }
+    if (result === "already_sent") {
+      res.status(409).json({ message: outreachAlreadySentMessage });
+      return;
+    }
+    if (result === "already_done") {
+      res.status(409).json({ message: outreachAlreadyDoneMessage });
+      return;
+    }
+
+    const lead = await storedLeadDetail(leadId);
+    if (!lead) {
+      throw new Error("Outreach draft was not marked done.");
+    }
+
+    const response: DoneLeadOutreachResponse = {
+      message: outreachDoneMessage,
       lead,
     };
     res.status(200).json(response);

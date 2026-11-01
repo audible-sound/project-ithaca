@@ -1,7 +1,9 @@
 import type {
+  ApproveLeadOutreachResponse,
   CreateLeadRequest,
   CreateLeadResponse,
   DeleteLeadResponse,
+  DoneLeadOutreachResponse,
   EditLeadOutreachRequest,
   EditLeadOutreachResponse,
   EditLeadSummaryRequest,
@@ -10,8 +12,10 @@ import type {
   LeadListItem,
   ListLeadListResponse,
   OverrideLeadQualificationResponse,
+  RejectLeadOutreachResponse,
   ReviseLeadOutreachRequest,
   ReviseLeadOutreachResponse,
+  SendLeadOutreachResponse,
   UpdateLeadResponse,
 } from "@ithaca/shared";
 import { create } from "zustand";
@@ -197,6 +201,10 @@ type LeadStore = {
     leadId: string,
     values: ReviseLeadOutreachRequest,
   ) => Promise<{ subject: string; body: string } | null>;
+  approveOutreach: (leadId: string) => Promise<boolean>;
+  rejectOutreach: (leadId: string) => Promise<boolean>;
+  sendOutreach: (leadId: string) => Promise<boolean>;
+  markOutreachDone: (leadId: string) => Promise<boolean>;
   clearForm: () => void;
   clearOverride: () => void;
   clearSummaryEdit: () => void;
@@ -568,6 +576,150 @@ export const useLeadStore = create<LeadStore>()((set, get) => ({
           err instanceof Error ? err.message : "Failed to reach API",
       });
       return null;
+    }
+  },
+  approveOutreach: async (leadId) => {
+    const token = authToken();
+    if (!token) {
+      set({ outreachMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ outreachMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/outreach/approve`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJson<Partial<ApproveLeadOutreachResponse>>(res);
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ outreachMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        outreachMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        outreachMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
+    }
+  },
+  rejectOutreach: async (leadId) => {
+    const token = authToken();
+    if (!token) {
+      set({ outreachMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ outreachMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/outreach/reject`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJson<Partial<RejectLeadOutreachResponse>>(res);
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ outreachMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        outreachMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        outreachMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
+    }
+  },
+  sendOutreach: async (leadId) => {
+    const token = authToken();
+    if (!token) {
+      set({ outreachMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ outreachMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/outreach/send`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJson<Partial<SendLeadOutreachResponse>>(res);
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ outreachMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        outreachMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        outreachMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
+    }
+  },
+  markOutreachDone: async (leadId) => {
+    const token = authToken();
+    if (!token) {
+      set({ outreachMessage: "Authentication required." });
+      return false;
+    }
+
+    set({ outreachMessage: null });
+
+    try {
+      const res = await fetch(`${apiUrl}/leads/${leadId}/outreach/done`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJson<Partial<DoneLeadOutreachResponse>>(res);
+      if (!res.ok || !("lead" in data) || !data.lead) {
+        set({ outreachMessage: data.message ?? "Failed to reach API" });
+        return false;
+      }
+
+      set({
+        lead: data.lead,
+        detailStatus: "ready",
+        detailMessage: null,
+        outreachMessage: null,
+      });
+      void get().loadLeads();
+      return true;
+    } catch (err) {
+      set({
+        outreachMessage:
+          err instanceof Error ? err.message : "Failed to reach API",
+      });
+      return false;
     }
   },
   deleteLead: async (leadId) => {

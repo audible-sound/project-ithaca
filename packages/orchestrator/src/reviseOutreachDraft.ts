@@ -22,7 +22,7 @@ import type {
   WorkflowLeadContext,
 } from "@ithaca/shared";
 
-const editableDraftStatuses = ["draft", "edited"] as const;
+const editableDraftStatuses = ["draft", "edited", "rejected"] as const;
 
 export type ReviseOutreachDraftInput = {
   leadId: string;

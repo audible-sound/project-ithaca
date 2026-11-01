@@ -18,6 +18,7 @@ type OutreachDraftDialogProps = {
   body: string | null;
   generatedSubject: string | null;
   generatedBody: string | null;
+  decision: string | null;
   editable: boolean;
   saving: boolean;
   revising: boolean;
@@ -47,6 +48,7 @@ export function OutreachDraftDialog({
   body,
   generatedSubject,
   generatedBody,
+  decision,
   editable,
   saving,
   revising,
@@ -86,6 +88,15 @@ export function OutreachDraftDialog({
         {message !== null ? (
           <Typography variant="caption" color="error" sx={{ display: "block", mb: 1 }}>
             {message}
+          </Typography>
+        ) : null}
+        {decision !== null ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ display: "block", mt: 1, mb: 1 }}
+          >
+            {decision}
           </Typography>
         ) : null}
         <TextField

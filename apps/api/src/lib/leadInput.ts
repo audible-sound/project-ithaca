@@ -25,6 +25,23 @@ export const outreachRequiredMessage = "Subject and message are required.";
 export const outreachMissingMessage = "Lead has no outreach draft to edit.";
 export const outreachNotEditableMessage = "Outreach draft cannot be edited.";
 export const outreachInstructionRequiredMessage = "Instruction is required.";
+export const outreachApprovedMessage =
+  "Modified draft is approved and may be sent.";
+export const outreachRejectedMessage = "Rejected outreach message is not sent.";
+export const outreachSentMessage = "Outreach message sent.";
+export const outreachDoneMessage = "Outreach marked done.";
+export const outreachMissingReviewMessage =
+  "Lead has no outreach draft to review.";
+export const outreachMissingSendMessage =
+  "Lead has no outreach draft to send.";
+export const outreachMissingDoneMessage =
+  "Lead has no outreach draft to mark done.";
+export const outreachNotReviewableMessage =
+  "Outreach draft cannot be reviewed.";
+export const outreachNotApprovedMessage = "Outreach draft is not approved.";
+export const outreachAlreadySentMessage = "Outreach message was already sent.";
+export const outreachAlreadyDoneMessage = "Outreach draft is already done.";
+export const outreachRecipientRequiredMessage = "Recipient is required.";
 
 function emailMessage(value: string | null, message: string): string | null {
   if (value === null || emailAddress.test(value)) {

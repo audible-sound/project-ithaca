@@ -193,6 +193,12 @@ export interface LeadOutreachDetail {
   status: string;
   /** True when a person edited the generated draft. */
   isUserEdited: boolean;
+  /** ISO time when the draft was approved. Null until approved. */
+  approvedAt: string | null;
+  /** ISO time when the draft was rejected. Null until rejected. */
+  rejectedAt: string | null;
+  /** ISO time of the latest draft update. */
+  updatedAt: string | null;
   /** Run that produced this draft. */
   workflowRunId: string;
 }
@@ -336,4 +342,28 @@ export interface ReviseLeadOutreachRequest {
 export interface ReviseLeadOutreachResponse {
   subject: string;
   body: string;
+}
+
+/** Body of a successful `POST /leads/:leadId/outreach/approve`. */
+export interface ApproveLeadOutreachResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `POST /leads/:leadId/outreach/reject`. */
+export interface RejectLeadOutreachResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `POST /leads/:leadId/outreach/send`. */
+export interface SendLeadOutreachResponse {
+  message: string;
+  lead: LeadDetail;
+}
+
+/** Body of a successful `POST /leads/:leadId/outreach/done`. */
+export interface DoneLeadOutreachResponse {
+  message: string;
+  lead: LeadDetail;
 }

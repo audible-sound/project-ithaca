@@ -49,6 +49,11 @@ export const outreachDrafts = pgTable(
       { onDelete: "restrict" },
     ),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
+    rejectedByUserId: uuid("rejected_by_user_id").references(
+      () => users.userId,
+      { onDelete: "restrict" },
+    ),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
@@ -56,6 +61,29 @@ export const outreachDrafts = pgTable(
     check(
       "outreach_drafts_status",
       sql`${table.status} IN ('draft', 'edited', 'approved', 'rejected', 'sent')`,
+    ),
+    check(
+      "outreach_drafts_decision",
+      sql`(
+        (${table.status} IN ('draft', 'edited')
+          AND ${table.approvedByUserId} IS NULL
+          AND ${table.approvedAt} IS NULL
+          AND ${table.rejectedByUserId} IS NULL
+          AND ${table.rejectedAt} IS NULL)
+        OR (${table.status} = 'approved'
+          AND ${table.approvedByUserId} IS NOT NULL
+          AND ${table.approvedAt} IS NOT NULL
+          AND ${table.rejectedByUserId} IS NULL
+          AND ${table.rejectedAt} IS NULL)
+        OR (${table.status} = 'rejected'
+          AND ${table.rejectedByUserId} IS NOT NULL
+          AND ${table.rejectedAt} IS NOT NULL
+          AND ${table.approvedByUserId} IS NULL
+          AND ${table.approvedAt} IS NULL)
+        OR (${table.status} = 'sent'
+          AND ${table.rejectedByUserId} IS NULL
+          AND ${table.rejectedAt} IS NULL)
+      )`,
     ),
   ],
 );

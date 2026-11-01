@@ -74,6 +74,10 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const outreachMessage = useLeadStore((state) => state.outreachMessage);
   const editOutreach = useLeadStore((state) => state.editOutreach);
   const reviseOutreach = useLeadStore((state) => state.reviseOutreach);
+  const approveOutreach = useLeadStore((state) => state.approveOutreach);
+  const rejectOutreach = useLeadStore((state) => state.rejectOutreach);
+  const sendOutreach = useLeadStore((state) => state.sendOutreach);
+  const markOutreachDone = useLeadStore((state) => state.markOutreachDone);
   const clearOutreachEdit = useLeadStore((state) => state.clearOutreachEdit);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
@@ -82,22 +86,61 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const [draftOpen, setDraftOpen] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [revisingDraft, setRevisingDraft] = useState(false);
-  const canOverride =
-    lead.ownerId !== null && lead.ownerId === userId && lead.qualification !== null;
-  const canEditSummary =
-    lead.ownerId !== null && lead.ownerId === userId && lead.summary !== null;
+  const [decidingDraft, setDecidingDraft] = useState(false);
+  const [sendingDraft, setSendingDraft] = useState(false);
+  const [markingDone, setMarkingDone] = useState(false);
+  const ownsLead = lead.ownerId !== null && lead.ownerId === userId;
+  const canOverride = ownsLead && lead.qualification !== null;
+  const canEditSummary = ownsLead && lead.summary !== null;
   const canViewDraft = lead.outreach !== null;
   const canEditDraft =
-    lead.ownerId !== null &&
-    lead.ownerId === userId &&
+    ownsLead &&
     lead.outreach !== null &&
-    (lead.outreach.status === "draft" || lead.outreach.status === "edited");
+    (lead.outreach.status === "draft" ||
+      lead.outreach.status === "edited" ||
+      lead.outreach.status === "rejected");
+  const outreachStatus = lead.outreach?.status ?? null;
+  const canReviewDraft =
+    lead.outreach !== null && outreachStatus !== null && outreachStatus !== "sent";
+  const canApproveDraft = canReviewDraft && outreachStatus !== "approved";
+  const canRejectDraft = canReviewDraft && outreachStatus !== "rejected";
+  const showSendOrDone = outreachStatus === "approved";
+  const draftBusy =
+    savingDraft || revisingDraft || decidingDraft || sendingDraft || markingDone;
   const order = new Map(leadPipelineStages.map((stage, index) => [stage, index]));
   const stages = [...lead.pipeline].sort(
     (a, b) => (order.get(a.stage) ?? 0) - (order.get(b.stage) ?? 0),
   );
   const firstSource = lead.sources[0] ?? null;
   const overriddenAt = formatDateTime(lead.qualification?.overriddenAt ?? null);
+  const approvedAt = formatDateTime(lead.outreach?.approvedAt ?? null);
+  const rejectedAt = formatDateTime(lead.outreach?.rejectedAt ?? null);
+  const doneAt = formatDateTime(lead.outreach?.updatedAt ?? null);
+  const sentAt = formatDateTime(lead.followUp?.sentAt ?? null);
+
+  function outreachDecisionText(): string | null {
+    if (lead.outreach === null) {
+      return null;
+    }
+
+    if (lead.outreach.status === "approved") {
+      return approvedAt ? `Approved ${approvedAt}` : "Approved";
+    }
+
+    if (lead.outreach.status === "rejected") {
+      return rejectedAt ? `Rejected ${rejectedAt}` : "Rejected";
+    }
+
+    if (lead.outreach.status === "sent") {
+      const approved = approvedAt ? `Approved ${approvedAt}` : "Approved";
+      if (lead.followUp?.sentAt) {
+        return `${approved}. Sent${sentAt ? ` ${sentAt}` : ""}`;
+      }
+      return `${approved}. Done${doneAt ? ` ${doneAt}` : ""}`;
+    }
+
+    return "Not approved";
+  }
 
   async function onSaveOverride(score: unknown, reason: string): Promise<void> {
     setSavingOverride(true);
@@ -134,6 +177,32 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
     setRevisingDraft(false);
     return revised;
   }
+
+  async function onApproveOutreach(): Promise<void> {
+    setDecidingDraft(true);
+    await approveOutreach(lead.leadId);
+    setDecidingDraft(false);
+  }
+
+  async function onRejectOutreach(): Promise<void> {
+    setDecidingDraft(true);
+    await rejectOutreach(lead.leadId);
+    setDecidingDraft(false);
+  }
+
+  async function onSendOutreach(): Promise<void> {
+    setSendingDraft(true);
+    await sendOutreach(lead.leadId);
+    setSendingDraft(false);
+  }
+
+  async function onMarkOutreachDone(): Promise<void> {
+    setMarkingDone(true);
+    await markOutreachDone(lead.leadId);
+    setMarkingDone(false);
+  }
+
+  const decisionText = outreachDecisionText();
 
   return (
     <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: "divider" }}>
@@ -297,13 +366,23 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                           Edited
                         </Typography>
                       ) : null}
+                      {decisionText !== null ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {decisionText}
+                        </Typography>
+                      ) : null}
+                      {outreachMessage !== null ? (
+                        <Typography variant="caption" color="error">
+                          {outreachMessage}
+                        </Typography>
+                      ) : null}
                       <Typography variant="body2" color="text.secondary">
                         Subject: {lead.outreach.subject ?? "—"}
                       </Typography>
-                      <Box>
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                         <Button
                           size="small"
-                          disabled={!canViewDraft}
+                          disabled={!canViewDraft || draftBusy}
                           onClick={() => {
                             clearOutreachEdit();
                             setDraftOpen(true);
@@ -311,7 +390,62 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                         >
                           {canEditDraft ? "Edit message" : "View message"}
                         </Button>
-                      </Box>
+                        {canReviewDraft ? (
+                          <>
+                            <Button
+                              size="small"
+                              variant={
+                                showSendOrDone ? "outlined" : "contained"
+                              }
+                              disabled={
+                                !ownsLead || !canApproveDraft || draftBusy
+                              }
+                              onClick={() => {
+                                void onApproveOutreach();
+                              }}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              disabled={
+                                !ownsLead || !canRejectDraft || draftBusy
+                              }
+                              onClick={() => {
+                                void onRejectOutreach();
+                              }}
+                            >
+                              Reject
+                            </Button>
+                          </>
+                        ) : null}
+                        {showSendOrDone ? (
+                          <>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              disabled={!ownsLead || draftBusy}
+                              onClick={() => {
+                                void onSendOutreach();
+                              }}
+                            >
+                              Send
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={!ownsLead || draftBusy}
+                              onClick={() => {
+                                void onMarkOutreachDone();
+                              }}
+                            >
+                              Done
+                            </Button>
+                          </>
+                        ) : null}
+                      </Stack>
                     </Stack>
                   ) : (
                     <Stack spacing={0.5}>
@@ -346,6 +480,25 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                         ]
                           .filter((part) => part !== null)
                           .join(" ") || "No follow-up yet."}
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button size="small" disabled>
+                          Mark replied
+                        </Button>
+                        <Button size="small" disabled>
+                          Snooze
+                        </Button>
+                        <Button size="small" disabled>
+                          Close
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  ) : lead.outreach?.status === "sent" ? (
+                    <Stack spacing={0.5}>
+                      <Typography variant="body2" color="text.secondary">
+                        {doneAt
+                          ? `Marked done ${doneAt}.`
+                          : "Marked done."}
                       </Typography>
                       <Stack direction="row" spacing={1}>
                         <Button size="small" disabled>
@@ -426,12 +579,13 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
         body={lead.outreach?.body ?? null}
         generatedSubject={lead.outreach?.generatedSubject ?? null}
         generatedBody={lead.outreach?.generatedBody ?? null}
+        decision={decisionText}
         editable={canEditDraft}
         saving={savingDraft}
         revising={revisingDraft}
         message={outreachMessage}
         onCancel={() => {
-          if (!savingDraft && !revisingDraft) {
+          if (!draftBusy) {
             clearOutreachEdit();
             setDraftOpen(false);
           }

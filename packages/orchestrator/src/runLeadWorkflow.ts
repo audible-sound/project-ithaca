@@ -518,8 +518,9 @@ async function runPersisted(
       errorMessage: null,
     });
 
-    // Leads are completed, or skipped. A completed draft moves them to done.
-    // A draft that failed for one lead leaves that lead failed at the draft stage.
+    // Leads are completed, or skipped. A completed draft stays on draft
+    // until the owner sends or marks it done. A draft that failed for one
+    // lead leaves that lead failed at the draft stage.
     if (stepType === "draft" && result.status === "completed") {
       const draftedIds = new Set(
         (result.outreachDrafts ?? []).map((draft) => draft.leadId),
@@ -534,7 +535,7 @@ async function runPersisted(
       for (const lead of leads) {
         if (draftedIds.has(lead.leadId)) {
           const updated = await markLead(persistence, workflowRunId, lead.leadId, {
-            currentStage: "done",
+            currentStage: "draft",
             status: "completed",
             errorMessage: null,
           });
@@ -587,10 +588,7 @@ async function runPersisted(
     } else {
       const leadStatus: WorkflowLeadStatus =
         result.status === "skipped" ? "skipped" : "completed";
-      const currentStage =
-        result.status === "completed" && stepType === "draft"
-          ? "done"
-          : stepType;
+      const currentStage = stepType;
       const updatedLeads = await markLeads(persistence, workflowRunId, leads, {
         currentStage,
         status: leadStatus,
