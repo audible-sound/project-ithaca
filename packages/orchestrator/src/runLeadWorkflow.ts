@@ -7,6 +7,7 @@ import {
 import type { SummarizeLeadQualification } from "@ithaca/agents";
 import {
   insertIdentifiedLead,
+  insertOutreachDraft,
   insertTokenUsage,
   insertWorkflowRunLeads,
   listLeadContextsByIds,
@@ -24,6 +25,7 @@ import type {
   InsertIdentifiedLeadResult,
   LeadQualificationDraft,
   LeadSummaryDraft,
+  OutreachDraftInsert,
   StoredLeadQualification,
   TokenUsageDraft,
   WorkflowRunLead as WorkflowRunLeadRow,
@@ -87,6 +89,7 @@ type WorkflowPersistence = {
   ) => Promise<StoredLeadQualification[]>;
   upsertLeadQualification: (draft: LeadQualificationDraft) => Promise<void>;
   upsertLeadSummary: (draft: LeadSummaryDraft) => Promise<void>;
+  insertOutreachDraft: (draft: OutreachDraftInsert) => Promise<void>;
 };
 
 const defaultAgents: WorkflowAgents = {
@@ -97,7 +100,9 @@ const defaultAgents: WorkflowAgents = {
   summarize: () => {
     throw new Error("Lead summary requires the workflow leads.");
   },
-  draft: draftOutreach,
+  draft: () => {
+    throw new Error("Outreach draft requires the workflow leads.");
+  },
 };
 
 const defaultPersistence: WorkflowPersistence = {
@@ -124,6 +129,7 @@ const defaultPersistence: WorkflowPersistence = {
   listLeadQualifications: listLeadQualificationsByLeadIds,
   upsertLeadQualification,
   upsertLeadSummary,
+  insertOutreachDraft,
 };
 
 function databaseUnavailable(error: unknown): boolean {
@@ -254,6 +260,11 @@ async function runPersisted(
             storedQualifications,
           ),
         );
+      } else if (stepType === "draft") {
+        const contexts = await persistence.listLeadContexts(
+          leads.map((lead) => lead.leadId),
+        );
+        result = await draftOutreach(icp, contexts);
       } else {
         result = await agents[stepType](icp);
       }
@@ -463,6 +474,49 @@ async function runPersisted(
       }
     }
 
+    if (
+      stepType === "draft" &&
+      result.status === "completed" &&
+      result.outreachDrafts !== undefined &&
+      result.outreachDrafts.length > 0
+    ) {
+      try {
+        for (const draft of result.outreachDrafts) {
+          await persistence.insertOutreachDraft({
+            leadId: draft.leadId,
+            workflowRunId,
+            subject: draft.subject,
+            body: draft.body,
+          });
+        }
+
+        if (result.usage !== undefined) {
+          await persistence.insertTokenUsage({
+            workflowRunId,
+            workflowStepId: step.workflowStepId,
+            agentType: "outreach",
+            modelName: result.usage.modelName,
+            promptTokens: result.usage.promptTokens,
+            completionTokens: result.usage.completionTokens,
+            estimatedCost: String(result.usage.estimatedCost),
+          });
+        }
+      } catch (error) {
+        const message = thrownMessage(error);
+        await failStage(
+          persistence,
+          workflowRunId,
+          step,
+          leads,
+          stepType,
+          message,
+          durationMs,
+        );
+        stages.push({ stage: stepType, status: "failed", message });
+        return { status: "failed", stages };
+      }
+    }
+
     // The stage is marked completed and its duration is saved.
     const completedAt = new Date();
     await persistence.updateStep(step.workflowStepId, {
@@ -473,32 +527,101 @@ async function runPersisted(
     });
 
     // Leads are completed, or skipped. A completed draft moves them to done.
-    const leadStatus: WorkflowLeadStatus =
-      result.status === "skipped" ? "skipped" : "completed";
-    const currentStage =
-      result.status === "completed" && stepType === "draft" ? "done" : stepType;
-    const updatedLeads = await markLeads(persistence, workflowRunId, leads, {
-      currentStage,
-      status: leadStatus,
-      errorMessage: null,
-    });
-    if (!updatedLeads.ok) {
-      // Saving the lead updates failed, so the run stops.
-      await failStage(
-        persistence,
-        workflowRunId,
-        step,
-        leads,
-        stepType,
-        updatedLeads.message,
-        durationMs,
+    // A draft that failed for one lead leaves that lead failed at the draft stage.
+    if (stepType === "draft" && result.status === "completed") {
+      const draftedIds = new Set(
+        (result.outreachDrafts ?? []).map((draft) => draft.leadId),
       );
-      stages.push({
-        stage: stepType,
-        status: "failed",
-        message: updatedLeads.message,
+      const failureById = new Map(
+        (result.outreachFailures ?? []).map((failure) => [
+          failure.leadId,
+          failure.message,
+        ]),
+      );
+
+      for (const lead of leads) {
+        if (draftedIds.has(lead.leadId)) {
+          const updated = await markLead(persistence, workflowRunId, lead.leadId, {
+            currentStage: "done",
+            status: "completed",
+            errorMessage: null,
+          });
+          if (!updated.ok) {
+            await failStage(
+              persistence,
+              workflowRunId,
+              step,
+              leads,
+              stepType,
+              updated.message,
+              durationMs,
+            );
+            stages.push({
+              stage: stepType,
+              status: "failed",
+              message: updated.message,
+            });
+            return { status: "failed", stages };
+          }
+          continue;
+        }
+
+        const failureMessage =
+          failureById.get(lead.leadId) ??
+          `Lead ${lead.leadId} outreach draft failed.`;
+        const updated = await markLead(persistence, workflowRunId, lead.leadId, {
+          currentStage: "draft",
+          status: "failed",
+          errorMessage: failureMessage,
+        });
+        if (!updated.ok) {
+          await failStage(
+            persistence,
+            workflowRunId,
+            step,
+            leads,
+            stepType,
+            updated.message,
+            durationMs,
+          );
+          stages.push({
+            stage: stepType,
+            status: "failed",
+            message: updated.message,
+          });
+          return { status: "failed", stages };
+        }
+      }
+    } else {
+      const leadStatus: WorkflowLeadStatus =
+        result.status === "skipped" ? "skipped" : "completed";
+      const currentStage =
+        result.status === "completed" && stepType === "draft"
+          ? "done"
+          : stepType;
+      const updatedLeads = await markLeads(persistence, workflowRunId, leads, {
+        currentStage,
+        status: leadStatus,
+        errorMessage: null,
       });
-      return { status: "failed", stages };
+      if (!updatedLeads.ok) {
+        // Saving the lead updates failed, so the run stops.
+        await failStage(
+          persistence,
+          workflowRunId,
+          step,
+          leads,
+          stepType,
+          updatedLeads.message,
+          durationMs,
+        );
+        stages.push({
+          stage: stepType,
+          status: "failed",
+          message: updatedLeads.message,
+        });
+        return { status: "failed", stages };
+      }
     }
 
     stages.push(result);

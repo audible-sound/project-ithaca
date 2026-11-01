@@ -526,6 +526,7 @@ export function mapLeadDetail(input: {
     outreach: outreachRow
       ? {
           subject: outreachRow.subject,
+          body: outreachRow.body,
           status: outreachRow.status,
           workflowRunId: outreachRow.workflowRunId,
         }

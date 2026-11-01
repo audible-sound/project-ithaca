@@ -7,6 +7,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import type { ReactElement } from "react";
+import { Link } from "react-router";
 import { workflowLabel } from "../workflowLabels";
 import { WorkflowStatusText } from "./WorkflowStatusText";
 
@@ -53,7 +54,18 @@ export function WorkflowLeadTable({
             return (
               <TableRow key={lead.leadId}>
                 <TableCell>
-                  {lead.companyName}
+                  <Typography
+                    variant="body2"
+                    component={Link}
+                    to={`/leads/${lead.leadId}`}
+                    sx={{
+                      color: "primary.main",
+                      textDecoration: "none",
+                      "&:hover": { textDecoration: "underline" },
+                    }}
+                  >
+                    {lead.companyName}
+                  </Typography>
                   {lead.errorMessage ? (
                     <Typography
                       variant="caption"

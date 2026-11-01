@@ -17,6 +17,7 @@ import { formatDate, formatDateTime } from "../../../utils/date";
 import { capitalize } from "../../../utils/string";
 import { leadStageLabel } from "../leadLabels";
 import { LeadReport } from "./LeadReport";
+import { OutreachDraftDialog } from "./OutreachDraftDialog";
 import { QualificationOverrideDialog } from "./QualificationOverrideDialog";
 import { SummaryEditDialog } from "./SummaryEditDialog";
 
@@ -72,10 +73,12 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
   const [savingOverride, setSavingOverride] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
   const canOverride =
     lead.ownerId !== null && lead.ownerId === userId && lead.qualification !== null;
   const canEditSummary =
     lead.ownerId !== null && lead.ownerId === userId && lead.summary !== null;
+  const canViewDraft = lead.outreach !== null;
   const order = new Map(leadPipelineStages.map((stage, index) => [stage, index]));
   const stages = [...lead.pipeline].sort(
     (a, b) => (order.get(a.stage) ?? 0) - (order.get(b.stage) ?? 0),
@@ -262,7 +265,13 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
                         Subject: {lead.outreach.subject ?? "—"}
                       </Typography>
                       <Box>
-                        <Button size="small" disabled>
+                        <Button
+                          size="small"
+                          disabled={!canViewDraft}
+                          onClick={() => {
+                            setDraftOpen(true);
+                          }}
+                        >
                           View message
                         </Button>
                       </Box>
@@ -372,6 +381,14 @@ export function LeadPipeline({ lead }: LeadPipelineProps): ReactElement {
         onClearMessage={clearSummaryEdit}
         onSave={(values) => {
           void onSaveSummary(values);
+        }}
+      />
+      <OutreachDraftDialog
+        open={draftOpen}
+        subject={lead.outreach?.subject ?? null}
+        body={lead.outreach?.body ?? null}
+        onClose={() => {
+          setDraftOpen(false);
         }}
       />
     </Paper>

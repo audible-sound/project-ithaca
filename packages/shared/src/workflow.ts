@@ -168,6 +168,23 @@ export interface WorkflowLeadSummary {
   structuredReport: LeadStructuredReport;
 }
 
+/**
+ * Personalised outreach email produced by the draft stage.
+ * Status is always `draft` until a person edits, approves, rejects, or sends it.
+ */
+export interface WorkflowLeadOutreachDraft {
+  leadId: string;
+  subject: string;
+  body: string;
+  status: "draft";
+}
+
+/** One lead that the draft stage could not personalise. */
+export interface WorkflowLeadOutreachFailure {
+  leadId: string;
+  message: string;
+}
+
 /** Token use and dollar cost for one model call in a stage. */
 export interface AgentStageUsage {
   modelName: string;
@@ -188,6 +205,10 @@ export interface AgentStageResult {
   qualifications?: WorkflowLeadQualification[];
   /** Omitted means this stage did not summarize leads. An empty array means summarize had no leads. */
   summaries?: WorkflowLeadSummary[];
+  /** Omitted means this stage did not draft outreach. An empty array means draft had no leads. */
+  outreachDrafts?: WorkflowLeadOutreachDraft[];
+  /** Leads that produced no draft. Omitted when every lead was drafted. */
+  outreachFailures?: WorkflowLeadOutreachFailure[];
   /** Present when this stage called a model. */
   usage?: AgentStageUsage;
   data?: Record<string, unknown>;

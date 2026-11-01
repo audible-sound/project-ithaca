@@ -179,6 +179,8 @@ export interface LeadSummaryDetail {
  */
 export interface LeadOutreachDetail {
   subject: string | null;
+  /** Email body. Null until the draft stores one. */
+  body: string | null;
   status: string;
   /** Run that produced this draft. */
   workflowRunId: string;

@@ -69,6 +69,8 @@ export type {
   StartWorkflowRunResponse,
   WorkflowLeadContact,
   WorkflowLeadContext,
+  WorkflowLeadOutreachDraft,
+  WorkflowLeadOutreachFailure,
   WorkflowLeadSource,
   WorkflowLeadQualification,
   WorkflowLeadStatus,
